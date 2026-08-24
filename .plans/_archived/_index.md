@@ -32,6 +32,7 @@ owner. An archived plan with a nameless loose end is a buried one.
 | `s37-your-own-box` | the machine you run it on, visible from the app | — DONE in four PRs (#325 #326 #327 #329); display-only by decision |
 | `s42-go-native` | finish the port, stop imitating Node | — COMPLETE; ports share→admin, registry flipped, burial shared with s08 |
 | `s43-go-agent` | the agent port — the last delegation | — COMPLETE; seven steps, claim contract intact, one named divergence (graceful shutdown) |
+| `s45-capability-menu` | declared facts, measured quality, human allocation | ⚠️ **the per-(model, pipeline) rollup on `agents model` never shipped** (raw columns exist) → #343 |
 | `s46-cloud-install` | one binary, one token, your domain | ⚠️ **the second-account live proof never ran** (risk register's own top item; delivered-in / DKIM-out) → #337 |
 
 ## Why the rest are still live
