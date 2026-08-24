@@ -201,6 +201,15 @@ describe("normalizeClaimant — absent or malformed = paid, no vector (conservat
     expect(normalizeClaimant({ capabilities: {} })).toEqual({ isFree: false, capabilities: {} });
   });
 
+  it("s44 slice 5: the sandbox FLAVOR is kept; a boolean or a stranger degrades to absent", () => {
+    // A flavor, never a boolean — a narrower executor must be able to say
+    // WHICH, and "true" would assert a capability nobody named.
+    expect(normalizeClaimant({ capabilities: { sandbox: "oci" } }).capabilities).toEqual({ sandbox: "oci" });
+    expect(normalizeClaimant({ capabilities: { sandbox: "wasi" } }).capabilities).toEqual({ sandbox: "wasi" });
+    expect(normalizeClaimant({ capabilities: { sandbox: true } }).capabilities).toEqual({});
+    expect(normalizeClaimant({ capabilities: { sandbox: "firecracker" } }).capabilities).toEqual({});
+  });
+
   it("s45: the declared menu keeps well-typed ids, bounded — and garbage degrades to absent", () => {
     // Facts, never rankings: an id list capped at 64 × 128 chars. The fit
     // gate never reads it; it exists for the allocation surface.
