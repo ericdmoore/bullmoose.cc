@@ -45,6 +45,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"sort"
@@ -55,6 +56,7 @@ import (
 	bmio "github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/jmap"
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/jsobj"
+	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/mcp"
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/store"
 )
 
@@ -99,6 +101,11 @@ type serveBindingConfig struct {
 type serveFleetConfig struct {
 	// Capabilities rides the claim VERBATIM (the file's own JSON), and is
 	// parsed separately for the fit check — two readers, one source.
+	// s44 slice 2 -- where this host's invocations reach the platform's tool
+	// surface. Explicit because the session document does not advertise it;
+	// absent, `mcpBaseFor` derives it and the status line NAMES what it
+	// derived, so a wrong guess is visible rather than a silent empty shelf.
+	MCPBase      string                        `json:"mcpBase"`
 	Capabilities json.RawMessage               `json:"capabilities"`
 	Bindings     map[string]serveBindingConfig `json:"bindings"`
 }
@@ -644,8 +651,33 @@ func handleInvocation(ctx context.Context, client *jmap.Client, acc account.Acco
 	if err := json.Unmarshal(craw, &claim); err != nil {
 		return false, err
 	}
-	if _, won := claim.Updated[invID]; !won {
+	won, ok := claim.Updated[invID]
+	if !ok {
 		return false, nil
+	}
+
+	// s44 slice 2 -- THE INVOCATION'S OWN CREDENTIAL. The claim mints a `bmi_`
+	// token and returns it exactly once; before this it was read and thrown
+	// away. It is not the runtime's bearer and cannot be: the tool surface
+	// refuses an agent-marked bearer outright (mcp.ts -32004) and answers only
+	// for the invocation that earned it. Held for THIS invocation's lifetime,
+	// never persisted, never logged -- a lost token costs one run's tools, a
+	// leaked one is a credential.
+	invToken := ""
+	if len(won) > 0 && string(won) != "null" {
+		var minted struct {
+			InvocationToken string `json:"invocationToken"`
+		}
+		if err := json.Unmarshal(won, &minted); err == nil {
+			invToken = minted.InvocationToken
+		}
+	}
+	if invToken == "" {
+		// A shard predating the token mint returns null. Not fatal: the run
+		// proceeds toolless, which is exactly what it did before this slice.
+		status(invID + " claimed (no invocation token minted — tools unavailable for this run)")
+	} else if shelf := toolShelf(ctx, fleet, client.Base(), invToken); shelf != "" {
+		status(invID + " " + shelf)
 	}
 
 	// PIPELINE DISPATCH: the binding's local config names the pass. "extract"
@@ -924,4 +956,55 @@ func resolveLocalModels(fleet *serveFleetConfig, db *sql.DB) error {
 		fleet.Bindings[name] = b
 	}
 	return nil
+}
+
+// mcpBaseFor resolves where this host's invocations reach the tool surface:
+// the fleet's explicit `mcpBase`, else derived by swapping the JMAP base's
+// leftmost label for "mcp" (app.bullmoose.cc -> mcp.bullmoose.cc, the
+// deployment's own shape). A derivation is a GUESS and is named in the status
+// line that uses it, because a wrong host must read as a wrong host and never
+// as "this invocation may call nothing".
+func mcpBaseFor(fleet *serveFleetConfig, jmapBase string) string {
+	if fleet != nil && fleet.MCPBase != "" {
+		return strings.TrimRight(fleet.MCPBase, "/")
+	}
+	u, err := url.Parse(jmapBase)
+	if err != nil || u.Host == "" {
+		return ""
+	}
+	host := u.Host
+	if i := strings.Index(host, "."); i > 0 {
+		host = "mcp" + host[i:]
+	}
+	return u.Scheme + "://" + host + "/mcp"
+}
+
+// toolShelf asks the platform what THIS invocation may reach and returns one
+// status line. Slice 2 is the round-trip only: the daemon proves it can see
+// its own shelf. Nothing is called, and a failure is reported rather than
+// raised -- a run whose tools are unreachable still does its template work,
+// which is exactly what every run did before this slice.
+func toolShelf(ctx context.Context, fleet *serveFleetConfig, jmapBase, token string) string {
+	base := mcpBaseFor(fleet, jmapBase)
+	if base == "" {
+		return "tools: no endpoint (set mcpBase in the fleet config)"
+	}
+	c := &mcp.Client{Base: base, Token: token, Name: "bullmoose"}
+	tools, err := c.ListTools(ctx)
+	if err != nil {
+		return "tools: " + base + " refused — " + err.Error()
+	}
+	if len(tools) == 0 {
+		// A real answer, not a shrug: the envelope allows nothing here.
+		return "tools: none for this invocation (" + base + ")"
+	}
+	names := make([]string, 0, len(tools))
+	for _, t := range tools {
+		names = append(names, t.Name)
+	}
+	sort.Strings(names)
+	if len(names) > 6 {
+		return fmt.Sprintf("tools: %d — %s …", len(names), strings.Join(names[:6], ", "))
+	}
+	return fmt.Sprintf("tools: %d — %s", len(names), strings.Join(names, ", "))
 }
