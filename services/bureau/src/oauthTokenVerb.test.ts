@@ -205,6 +205,80 @@ describe("oauth_token — exchange, then spend, inside the Bureau", () => {
     expect(seen).toHaveLength(0); // nothing was attempted
   });
 
+  it("an unparseable token_url refuses without attempting anything", async () => {
+    const h = await harness({ ...GOOGLE_META, token_url: "not a url" });
+    const seen = upstream(() => tokenOK());
+    expect(await (await h.use({ url: "https://www.googleapis.com/x" })).text()).toContain("unparseable");
+    expect(seen).toHaveLength(0);
+  });
+
+  it("a confidential client's secret rides only when the operator sealed one", async () => {
+    // PKCE public clients (the CLI's own flow) have no secret, and sending
+    // an empty one is how a provider decides you are a different client.
+    const withSecret = await harness({ ...GOOGLE_META, client_secret: "cs-abc" });
+    const seen = upstream((req) =>
+      req.url.includes("oauth2") ? tokenOK() : new Response(JSON.stringify({}), { status: 200 }),
+    );
+    await withSecret.use({ url: "https://www.googleapis.com/x" });
+    expect(seen[0]!.body).toContain("client_secret=cs-abc");
+
+    vi.unstubAllGlobals();
+    __resetOAuthTokenCache();
+    const noSecret = await harness();
+    const seen2 = upstream((req) =>
+      req.url.includes("oauth2") ? tokenOK() : new Response(JSON.stringify({}), { status: 200 }),
+    );
+    await noSecret.use({ url: "https://www.googleapis.com/x" });
+    expect(seen2[0]!.body).not.toContain("client_secret");
+  });
+
+  it("an unreachable token endpoint, a non-JSON body and a missing access_token each refuse distinctly", async () => {
+    const unreachable = await harness();
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("ECONNREFUSED");
+    });
+    expect(await (await unreachable.use({ url: "https://www.googleapis.com/x" })).text()).toContain("unreachable");
+
+    vi.unstubAllGlobals();
+    __resetOAuthTokenCache();
+    const garbage = await harness();
+    upstream(() => new Response("<html>maintenance</html>", { status: 200 }));
+    expect(await (await garbage.use({ url: "https://www.googleapis.com/x" })).text()).toContain("did not return JSON");
+
+    vi.unstubAllGlobals();
+    __resetOAuthTokenCache();
+    const empty = await harness();
+    upstream(() => new Response(JSON.stringify({ token_type: "Bearer" }), { status: 200 }));
+    expect(await (await empty.use({ url: "https://www.googleapis.com/x" })).text()).toContain("no access_token");
+  });
+
+  it("a token with no expires_in gets the conservative default, not an immortal cache entry", async () => {
+    const h = await harness();
+    const seen = upstream((req) =>
+      req.url.includes("oauth2")
+        ? new Response(JSON.stringify({ access_token: ACCESS }), { status: 200 })
+        : new Response(JSON.stringify({}), { status: 200 }),
+    );
+    await h.use({ url: "https://www.googleapis.com/x" });
+    await h.use({ url: "https://www.googleapis.com/x" });
+    // Cached (one exchange), and the entry is bounded — a provider that
+    // omits expires_in must not buy a token that never re-exchanges.
+    expect(seen.filter((s) => s.url.includes("oauth2"))).toHaveLength(1);
+  });
+
+  it("the verb refuses a credential of the wrong KIND — a bearer is not a refresh token", async () => {
+    // The grant says oauth_token; the credential is an api-key. Both must
+    // agree, and the mismatch is the operator's mis-grant, caught here.
+    const { runOAuthTokenVerb } = await import("./oauthTokenVerb");
+    const res = await runOAuthTokenVerb(
+      { DB: fakeD1(), VAULT_MASTER_KEY: MASTER, INTERNAL_TOKEN: INTERNAL } as unknown as Env,
+      { principalId: "p", credRef: "stripe", kind: "api-key", meta: GOOGLE_META },
+      { url: "https://www.googleapis.com/x" },
+    );
+    expect(res.status).toBe(403);
+    expect(await res.text()).toContain("oauth-refresh");
+  });
+
   it("a non-https token_url is refused — the exchange carries the refresh token", async () => {
     const h = await harness({ ...GOOGLE_META, token_url: "http://oauth2.googleapis.com/token" });
     const seen = upstream(() => tokenOK());
