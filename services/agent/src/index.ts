@@ -24,6 +24,7 @@ import { sweepDraftsDigest } from "./draftsDigest.js";
 import { runJobNode } from "./jobNode.js";
 import { proposeMidBandHolds } from "./midBandProposal.js";
 import { proposeRepetitionOffers } from "./repetition.js";
+import { sweepCeremonyFailNotices } from "./ceremonyAsk.js";
 import { classifyScreened } from "./bouncerClassify.js";
 import { commitHeldProposals } from "./commitHeld.js";
 import { sweepWatches } from "./watches.js";
@@ -226,6 +227,8 @@ export default {
     // an OFFER (always pending, never the grant — a sweep-initiated rule
     // auto-applying under rung 3 would be the accrual the rung forbids).
     await proposeRepetitionOffers(env);
+    // s33 OQ5 — failed step-ups notify the ENROLLED address, once each.
+    await sweepCeremonyFailNotices(env, new Mailstore(env.DB, env.BLOBS));
     // s03.D T2 — commit tier-2 approvals out of the hold tray once their yank
     // window closes. This is the sweep that makes Approve MEAN send: without
     // it, a held reply sits in the tray forever (EditorEmily's did, for two

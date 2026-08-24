@@ -828,11 +828,24 @@ export const MIGRATIONS = [
          created_at      INTEGER NOT NULL,
          expires_at      INTEGER NOT NULL,
          decided_at      INTEGER,
-         consumed_at     INTEGER
+         consumed_at     INTEGER,
+         notified_at     INTEGER
        )`,
       "CREATE INDEX IF NOT EXISTS ceremonies_principal ON ceremonies (principal_id, status)",
     ],
     absent: [],
+  },
+
+  {
+    id: "ceremonies-notified-at",
+    why: "s33 agent-side: the OQ5 fail-notice sweep stamps notified_at; without the column the sweep's UPDATE fails and failed step-ups notify nobody",
+    blocks: null,
+    needs: ["ceremonies-table"],
+    check: hasColumn("ceremonies", "notified_at"),
+    up: ["ALTER TABLE ceremonies ADD COLUMN notified_at INTEGER"],
+    absent: [
+      "CREATE TABLE ceremonies (id TEXT PRIMARY KEY, principal_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending')",
+    ],
   },
 
   {
