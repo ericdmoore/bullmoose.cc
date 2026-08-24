@@ -1,7 +1,9 @@
 # s31 — Rules: the three-rung ladder · *filtering as staff work, with the manual override intact*
 
-> **Status: DESIGN — resolved in conversation (Eric, 2026-08-19; rung 2
-> grounded 2026-08-22), nothing built.**
+> **Status: rungs 1 + 2 and the read side SHIPPED 2026-08-22/23** (#305 /get,
+> #313 the compose machine, #318 the popover, #321 /set + the rules scope).
+> OUTSTANDING: rung 3 (auto-apply as GRANTED standing authority) and the
+> repetition detector that earns its offers.
 > Born the night BoogieMail's Rules screen said *"This account's mail server does
 > not support mail-filtering rules"* — which was honest, and wrong to leave true.
 

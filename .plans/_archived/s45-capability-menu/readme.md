@@ -1,6 +1,8 @@
 # s45 — the capability menu · *declared facts, measured quality, human allocation*
 
-> **Status: DESIGN. Nothing built.** From the 2026-08-22 conversation — Eric:
+> **Status: SHIPPED 2026-08-23** (#323 @local resolution, #324 menu declaration,
+> #328 measured receipt/latency). Open nicety: the aggregated per-(model,
+> pipeline) table on `agents model` — raw columns all exist now. From the 2026-08-22 conversation — Eric:
 > *"why not communicate to the messaging plane from the CLI 'how smart the
 > local models we can run are'… budget vs latency vs param count brought to
 > bear on a task"*, then, conceded and sharpened: *"Totally understand that
