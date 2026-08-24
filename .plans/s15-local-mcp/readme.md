@@ -89,4 +89,4 @@ feature — one registry, two doors.
   tier-3 hardware split)
 - `services/agent/src/{mcp.ts,mcpNouns.ts}` — the tool registry both doors must share
 - `.plans/s11-scheduling/jobs-and-facets.md` §4 — the fleet-host shape this mirrors
-- `.plans/s08-go-cli/` — the port that makes a single-binary local server possible
+- `.plans/_archived/s08-go-cli/` — the port that makes a single-binary local server possible
