@@ -91,6 +91,10 @@ CREATE TABLE IF NOT EXISTS emails (
   received_at   INTEGER NOT NULL,          -- epoch ms
   has_attachment INTEGER NOT NULL DEFAULT 0,
   attachments_json TEXT NOT NULL DEFAULT '[]', -- JSON AttachmentMeta[]
+  -- s33 slice 1: the DMARC positive, kept instead of discarded — e.g.
+  -- {"dmarc":"pass","aligned":"dkim","d":"company.com","at":…}. NULL means
+  -- "not known", NEVER "not authentic" (no header, pre-s33 row, non-pass).
+  assurance_json TEXT,
   last_writer_principal   TEXT,             -- provenance (s03.A T1) — see header
   last_writer_binding     TEXT,
   last_writer_invocation  TEXT,

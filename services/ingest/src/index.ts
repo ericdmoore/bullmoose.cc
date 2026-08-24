@@ -22,6 +22,7 @@ import {
   type BouncerBinding,
   type BoundaryVerdict,
 } from "./boundary";
+import { parseAssurance } from "./assurance";
 import type { BoundaryMessage } from "./boundaryContract";
 import { sweepGraduations } from "./graduationSweep";
 import { extractDueAt } from "@bullmoose/scheduling";
@@ -388,6 +389,16 @@ async function deliver(
   );
   const attachments = sidestep.attachments;
 
+  // s33 slice 1 — keep the DMARC positive instead of discarding it. Same
+  // trust model as stage 2 (topmost Authentication-Results only); null when
+  // the edge asserted nothing, which stores as NULL = "not known".
+  const fromDomain = (parsed.from?.address ?? "").split("@").pop() ?? "";
+  const assurance = parseAssurance(
+    (parsed.headers ?? []).map((h) => ({ key: h.key.toLowerCase(), value: h.value })),
+    fromDomain,
+    Date.now(),
+  );
+
   const emailId = `e_${crypto.randomUUID()}`;
   await store.insertEmail(route.accountId, {
     id: emailId,
@@ -411,6 +422,7 @@ async function deliver(
     attachments,
     mailboxIds: [inboxId],
     keywords: [],
+    assurance,
   });
 
   // Agent bindings: create invocations for mailbox-delivery triggers.
