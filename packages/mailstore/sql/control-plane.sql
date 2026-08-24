@@ -124,6 +124,26 @@ CREATE TABLE IF NOT EXISTS enrollments (
   consumed_at   INTEGER
 );
 
+-- WebAuthn credentials (s33 slice 2). A row is a PUBLIC key — nothing to
+-- seal, which is the whole argument for this living beside principals
+-- rather than in the Bureau. The credential rule (2026-08-21): TWO rows
+-- complete an account; any ONE satisfies a ceremony. `public_key_cose` is
+-- the authenticator's COSE key verbatim (base64url); `counter` is the
+-- signature counter assertion verification (slice 3) monotonically checks.
+CREATE TABLE IF NOT EXISTS webauthn_credentials (
+  id              TEXT PRIMARY KEY,          -- credential id, base64url
+  principal_id    TEXT NOT NULL REFERENCES principals(id),
+  public_key_cose TEXT NOT NULL,
+  alg             INTEGER NOT NULL,          -- COSE alg: -7 ES256 | -257 RS256
+  counter         INTEGER NOT NULL DEFAULT 0,
+  aaguid          TEXT,
+  label           TEXT,                      -- "phone", "laptop" — the human's word
+  created_at      INTEGER NOT NULL,
+  last_used_at    INTEGER
+);
+CREATE INDEX IF NOT EXISTS webauthn_credentials_principal
+  ON webauthn_credentials (principal_id);
+
 -- Scoped revocable bearer tokens: device tokens, agent tokens, admin
 -- tokens — one table, one verification path. Plaintext secret is shown
 -- once at mint; only its SHA-256 is stored.

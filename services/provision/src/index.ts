@@ -1507,8 +1507,9 @@ const ENROLLMENT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
  * so every credential it sets is a credential the operator chose and knows —
  * the distance #213 named. This link inverts it. The operator gets a URL and
  * hands it over OUT-OF-BAND (a text message is a different channel — the s33
- * trust anchor); the arriving human sets their own password at /enroll on the
- * AS, and the operator never sees it.
+ * trust anchor); the arriving human registers TWO PASSKEYS at /enroll on the
+ * AS (s33 slice 2 — the credential rule removed the password entirely), and
+ * there is nothing for the operator to see: the rows are public keys.
  *
  * Storage follows the tokens table's rule to the letter: the plaintext is in
  * the response ONCE, only its SHA-256 lands in the row. The URL carries the

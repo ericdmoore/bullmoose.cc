@@ -784,6 +784,32 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "webauthn-credentials-table",
+    why: "s33 slice 2 — the passkey registry; a shard without it cannot complete any enrollment (the /enroll door 500s honestly), and a plain schema re-run creates it",
+    // Non-blocking, the annotations-table precedent: no hot request path
+    // authorizes against it yet (assertion login is slice 3); its absence
+    // degrades the NEW enrollment surface only, and schemas-then-deploy is
+    // already the runbook order.
+    blocks: null,
+    check: tableExists("webauthn_credentials"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS webauthn_credentials (
+         id              TEXT PRIMARY KEY,
+         principal_id    TEXT NOT NULL REFERENCES principals(id),
+         public_key_cose TEXT NOT NULL,
+         alg             INTEGER NOT NULL,
+         counter         INTEGER NOT NULL DEFAULT 0,
+         aaguid          TEXT,
+         label           TEXT,
+         created_at      INTEGER NOT NULL,
+         last_used_at    INTEGER
+       )`,
+      "CREATE INDEX IF NOT EXISTS webauthn_credentials_principal ON webauthn_credentials (principal_id)",
+    ],
+    absent: [],
+  },
+
+  {
     id: "emails-assurance-json",
     why: "s33 slice 1: delivery's INSERT names the column (the DMARC positive, kept instead of discarded); an ingest deployed against a database missing it fails EVERY delivery",
     blocks: "deploy",
