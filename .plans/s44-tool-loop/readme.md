@@ -243,6 +243,31 @@ but the harness sees the call before money moves; and the ledger ITEMIZES
 after — "model: $0 · sandbox: $0.00x" — because free was always measured
 zero, never an identity.
 
+**The local executor, multi-host (Eric, 2026-08-24): a detection ladder,
+like `bullmoose local`.** Rung 1 — an OCI runtime, detected in preference
+order podman → docker → Apple `container` (native on macOS 26; its
+VM-per-container shape sidesteps the shared-Colima-VM memory pressure the
+alpaca watchdogs exist for). OCI is the contract's native family because
+it gives BYTES-level parity with the cloud side: one image definition as a
+multi-arch manifest (amd64/arm64), digest-pinned per arch, the admitting
+ledger row referencing the manifest-list digest — one definition, N
+platform builds, provenance intact. Containment is uniform flags all
+three speak: --network=none, read-only rootfs + tmpfs workdir,
+cpu/mem/pids caps, wall-clock timeout. Rung 2 — the zero-dependency
+floor: wazero (pure-Go WASI) embedded in the CLI binary, honest about its
+narrower shelf via the FACET (`sandbox: "oci" | "wasi"`, requires matches
+on flavor — sqlite-over-CSV runs on the floor; pandas routes past it).
+Rung 3 — nothing detected → declare false → cloud executes, metered.
+
+Two rules: (1) NEVER hand-roll the isolation — the build-in-repo culture's
+one standing exception; spend originality on the contract, not on
+seccomp. (2) Containment lives IN the conformance transcripts: negative
+assertions (a curl that MUST fail, a write outside the workdir that MUST
+fail) replayed on every executor, so two conforming executors cannot rot
+in two places silently. Detection follows `bullmoose local`'s consent
+posture: detect and declare; offer managed setup print-then-ask; never
+silently install a runtime.
+
 Sequencing: after the first tool family — it is tool N+1 through the same
 door, with the same per-tool injection review, not a new architecture.
 
