@@ -203,7 +203,16 @@ func ApplyCore(cf *CF, st *Stack, probe *ProbeResult, plan *Plan, opts ApplyOpts
 		if err := cf.putWorker(acct, cfg.Name, meta, bundle); err != nil {
 			return applied, fmt.Errorf("upload %s: %w", cfg.Name, err)
 		}
-		step("worker %s uploaded (%d KiB)", cfg.Name, len(bundle)/1024)
+		// workers.dev, wrangler's own semantics: enabled iff no routes are
+		// declared. API uploads default to DISABLED, which would leave
+		// provision — the `admin init` door, workers.dev-only by design —
+		// unreachable, and the hand-off would print a URL that 404s.
+		workersDev := len(cfg.Routes) == 0
+		if err := cf.postJSON("/accounts/"+acct+"/workers/scripts/"+cfg.Name+"/subdomain",
+			map[string]bool{"enabled": workersDev}, nil); err != nil {
+			return applied, fmt.Errorf("workers.dev on %s: %w", cfg.Name, err)
+		}
+		step("worker %s uploaded (%d KiB), workers.dev=%v", cfg.Name, len(bundle)/1024, workersDev)
 		for name, value := range secretsFor(short) {
 			if err := cf.putSecret(acct, cfg.Name, name, value); err != nil {
 				return applied, fmt.Errorf("secret %s on %s: %w", name, cfg.Name, err)
@@ -491,4 +500,18 @@ func (c *CF) putWorker(acct, name string, metadata, bundle []byte) error {
 func (c *CF) putSecret(acct, script, name, value string) error {
 	return c.putJSON("/accounts/"+acct+"/workers/scripts/"+script+"/secrets",
 		map[string]string{"name": name, "text": value, "type": "secret_text"}, &json.RawMessage{})
+}
+
+// WorkersSubdomain answers the account's workers.dev subdomain, "" when the
+// account never claimed one — the hand-off refuses to invent a name (a
+// subdomain is account-visible branding; claiming one is the operator's
+// choice, made once, in the dashboard).
+func (c *CF) WorkersSubdomain(acct string) (string, error) {
+	var out struct {
+		Subdomain string `json:"subdomain"`
+	}
+	if err := c.getJSON("/accounts/"+acct+"/workers/subdomain", &out); err != nil {
+		return "", err
+	}
+	return out.Subdomain, nil
 }

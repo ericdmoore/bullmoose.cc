@@ -160,6 +160,8 @@ func cfFake(t *testing.T, state *cfState) string {
 			w.Write(env(map[string]string{}))
 		case strings.HasSuffix(r.URL.Path, "/workers/routes"): // install's route pre-listing
 			w.Write(env([]any{}))
+		case strings.HasSuffix(r.URL.Path, "/workers/subdomain"): // the hand-off's admin-plane URL
+			w.Write(env(map[string]string{"subdomain": "tea-industries"}))
 		case strings.HasSuffix(r.URL.Path, "/d1/database"):
 			w.Write(env(named("name", state.d1)))
 		case strings.HasSuffix(r.URL.Path, "/r2/buckets"):
@@ -168,6 +170,10 @@ func cfFake(t *testing.T, state *cfState) string {
 			w.Write(env(named("title", state.kv)))
 		case strings.HasSuffix(r.URL.Path, "/pages/projects"):
 			w.Write(env(named("name", state.pages)))
+		case strings.HasSuffix(r.URL.Path, "/rules/catch_all"):
+			w.Write(env(map[string]any{"enabled": false, "actions": []any{}}))
+		case strings.HasSuffix(r.URL.Path, "/email/routing"):
+			w.Write(env(map[string]any{"enabled": false}))
 		case strings.HasSuffix(r.URL.Path, "/dns_records"):
 			w.Write(env(state.dns))
 		default:
@@ -348,17 +354,38 @@ func TestCloudInstall_YesAppliesAndHandsOff(t *testing.T) {
 	if !strings.Contains(out, "core stack applied to tea.example") {
 		t.Errorf("receipt missing:\n%s", out)
 	}
-	// The hand-off: ADMIN_TOKEN printed ONCE (48 hex chars for 24 bytes),
-	// and the not-yet-wired truth stated rather than implied.
+	// The hand-off: ADMIN_TOKEN printed ONCE, the admin-plane URL built from
+	// the account's real workers.dev subdomain, and the mail path handed to
+	// the stack's own wiring rather than promised by the installer.
 	if !strings.Contains(out, "ADMIN_TOKEN") || !strings.Contains(out, "save it now") {
 		t.Errorf("no ADMIN_TOKEN hand-off:\n%s", out)
 	}
-	if !strings.Contains(out, "not yet wired (by design): the mail path") {
-		t.Errorf("the T4 honesty line is missing:\n%s", out)
+	if !strings.Contains(out, "admin init --url https://bullmoose-provision.tea-industries.workers.dev") {
+		t.Errorf("the hand-off must print the real admin-plane URL:\n%s", out)
+	}
+	if !strings.Contains(out, "admin domain add tea.example") || !strings.Contains(out, "cloud doctor --zone tea.example") {
+		t.Errorf("the next-steps must name the stack's own mail wiring and its verification:\n%s", out)
 	}
 	// External secret came from the environment, never argv.
 	if !strings.Contains(errOut, "secret SES_ACCESS_KEY_ID installed") {
 		t.Errorf("SES secret did not ride from env:\n%s", errOut)
+	}
+}
+
+func TestCloudDoctor_UnwiredZone(t *testing.T) {
+	// The doctor reads the ZONE, not the stack — it answers before admin
+	// init exists. An unwired zone exits 1 with the fix named per gap.
+	_, cf := stackFake(t), cfFake(t, &cfState{})
+	cloudEnv(t, "", cf)
+	out, _, code := runCloudCmd(t, "doctor", "--zone", "tea.example")
+	if code != 1 {
+		t.Fatalf("unwired zone must exit 1, got %d\n%s", code, out)
+	}
+	if !strings.Contains(out, "✗ email-routing") || !strings.Contains(out, "fix: bullmoose admin domain add tea.example") {
+		t.Errorf("gaps must render with their fix:\n%s", out)
+	}
+	if _, errOut, code := runCloudCmd(t, "doctor"); code != 2 || !strings.Contains(errOut, "--zone") {
+		t.Errorf("doctor without zone: code=%d err=%s", code, errOut)
 	}
 }
 
@@ -371,7 +398,7 @@ func TestCloudPlan_Usage(t *testing.T) {
 	if _, errOut, code := runCloudCmd(t, "plan", "--zone", "x.dev"); code != 2 || !strings.Contains(errOut, "CLOUDFLARE_API_TOKEN") {
 		t.Errorf("missing token: code=%d err=%s", code, errOut)
 	}
-	if _, errOut, code := runCloudCmd(t); code != 2 || !strings.Contains(errOut, "cloud plan|install --zone") {
+	if _, errOut, code := runCloudCmd(t); code != 2 || !strings.Contains(errOut, "cloud plan|install|doctor --zone") {
 		t.Errorf("no verb: code=%d err=%s", code, errOut)
 	}
 	if _, errOut, code := runCloudCmd(t, "teleport"); code != 2 || !strings.Contains(errOut, "teleport") {

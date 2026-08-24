@@ -101,7 +101,10 @@ func runCloud(s *bmio.Streams, argv []string) int {
 		s.Out("         what installing the published stack onto <domain> would do — every")
 		s.Out("         resource by name, refusals first.")
 		s.Out("install  the same plan, one honest yes (--yes skips the prompt), then apply:")
-		s.Out("         storage, D1 schema, workers, secrets, routes. Mail path lands in T4.")
+		s.Out("         storage, D1 schema, workers, secrets, routes — ending at the `admin init`")
+		s.Out("         hand-off. The mail path is the stack's own job (`admin domain add`).")
+		s.Out("doctor   read-only walk of <domain>'s mail path — Email Routing, catch-all→ingest,")
+		s.Out("         MX, SES DKIM, DMARC — with the fixing command named per gap.")
 		return 0
 	}
 	if a.badFlag != "" {
@@ -116,10 +119,12 @@ func runCloud(s *bmio.Streams, argv []string) int {
 		return runCloudPlan(s, a)
 	case "install":
 		return runCloudInstall(s, a)
+	case "doctor":
+		return runCloudDoctor(s, a)
 	case "":
-		return die(s, bmio.Fail("cloud needs a verb: `bullmoose cloud plan|install --zone <domain>`", bmio.ExitUsage))
+		return die(s, bmio.Fail("cloud needs a verb: `bullmoose cloud plan|install|doctor --zone <domain>`", bmio.ExitUsage))
 	default:
-		return die(s, bmio.Fail("unknown cloud verb '"+verb+"' — `plan` and `install` exist today", bmio.ExitUsage))
+		return die(s, bmio.Fail("unknown cloud verb '"+verb+"' — `plan`, `install` and `doctor` exist today", bmio.ExitUsage))
 	}
 }
 
@@ -212,9 +217,68 @@ func runCloudInstall(s *bmio.Streams, a cloudArgs) int {
 	for _, name := range applied.MissingExternal {
 		s.Out("still needed: " + name + " — set it in the environment and re-run `cloud install` (everything applied stays applied)")
 	}
+
+	// The hand-off: `cloud install` ends exactly where `admin init` begins
+	// (the s46 boundary, stated as a table in the plan). The mail path is
+	// the STACK's own job — provision's addDomain enables Email Routing,
+	// points the catch-all at ingest and writes the SES DKIM/DMARC records,
+	// each step receipted — so the next commands are the product's, not
+	// more installer.
 	s.Out("")
-	s.Out("not yet wired (by design): the mail path — MX + Email Routing + delivery verification is s46 T4;")
-	s.Out("the webmail app upload and `admin init` hand-off are T5.")
+	sub, subErr := cloud.NewCF(os.Getenv("CLOUDFLARE_API_BASE_URL"), os.Getenv("CLOUDFLARE_API_TOKEN"), nil).
+		WorkersSubdomain(probe.Zone.AccountID)
+	switch {
+	case subErr != nil || sub == "":
+		s.Out("next: this account has no workers.dev subdomain, and the admin plane (bullmoose-provision)")
+		s.Out("is reachable only there — claim one in the Cloudflare dashboard (Workers → your subdomain),")
+		s.Out("then: bullmoose admin init --url https://bullmoose-provision.<subdomain>.workers.dev --token <ADMIN_TOKEN above>")
+	default:
+		s.Out("next — connect the admin plane, then let the stack wire its own mail path:")
+		s.Out("  bullmoose admin init --url https://bullmoose-provision." + sub + ".workers.dev --token <ADMIN_TOKEN above>")
+	}
+	s.Out("  bullmoose admin tenant add <name>")
+	s.Out("  bullmoose admin domain add " + a.Zone + " --tenant <tenantId>   # MX + Email Routing + catch-all→ingest + SES DKIM/DMARC")
+	s.Out("  bullmoose cloud doctor --zone " + a.Zone + "                    # read-only: did the mail path land?")
+	return 0
+}
+
+// runCloudDoctor is the T4 verification surface: a read-only walk of the
+// zone's mail path with the fixing command named per gap. It deliberately
+// does not require the stack — it reads the ZONE, so it answers honestly
+// before admin init, after domain add, and any time mail goes quiet.
+func runCloudDoctor(s *bmio.Streams, a cloudArgs) int {
+	if a.Zone == "" {
+		return die(s, bmio.Fail("cloud doctor needs --zone <domain>", bmio.ExitUsage))
+	}
+	token := os.Getenv("CLOUDFLARE_API_TOKEN")
+	if token == "" {
+		return die(s, bmio.Fail("CLOUDFLARE_API_TOKEN is not set — the doctor is read-only but still needs to read the zone", bmio.ExitUsage))
+	}
+	report, err := cloud.MailDoctor(cloud.NewCF(os.Getenv("CLOUDFLARE_API_BASE_URL"), token, nil), a.Zone)
+	if err != nil {
+		return die(s, err)
+	}
+	if a.JSON {
+		if err := s.EmitJSON(report); err != nil {
+			return die(s, err)
+		}
+	} else {
+		s.Out("mail path for " + report.Zone + ":")
+		for _, c := range report.Checks {
+			mark := "✓"
+			if !c.OK {
+				mark = "✗"
+			}
+			line := "  " + mark + " " + c.Name + " — " + c.State
+			if c.Fix != "" {
+				line += " → fix: " + c.Fix
+			}
+			s.Out(line)
+		}
+	}
+	if !report.AllOK() {
+		return int(bmio.ExitFail)
+	}
 	return 0
 }
 
