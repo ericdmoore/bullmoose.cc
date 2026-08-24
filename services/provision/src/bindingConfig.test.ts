@@ -555,7 +555,7 @@ describe("the route accepts the typed core and nothing else", () => {
     expect(res.status).toBe(400);
     const out = await body<{ error: string; rejected: string[]; accepted: string[] }>(res);
     expect(out.rejected).toEqual(["persona"]);
-    expect(out.accepted).toEqual(["enabled", "replyMode", "allowedSenders", "recipientsBookId"]);
+    expect(out.accepted).toEqual(["enabled", "replyMode", "allowedSenders", "recipientsBookId", "ruleAutoApply"]);
     expect(out.error).toMatch(/TYPED CORE/);
     // Mixed calls do not half-apply: the legal field was not written either.
     expect(storedConfig(f).replyMode).toBe("draft");
@@ -647,5 +647,40 @@ describe("the route accepts the typed core and nothing else", () => {
       f.h.env,
     );
     expect(chainRes.status).toBe(401);
+  });
+});
+
+describe("ruleAutoApply — the s31 rung-3 grant (standing authority, given never accrued)", () => {
+  it("true lands the grant in the blob; false and null both revoke to ABSENCE", async () => {
+    const f = await fixture();
+    let res = await patch(f, { ruleAutoApply: true });
+    expect(res.status).toBe(200);
+    expect(storedConfig(f).ruleAutoApply).toBe(true);
+    // Revoked is ABSENT, not false — a revoked grant leaves no key to misread.
+    res = await patch(f, { ruleAutoApply: false });
+    expect(res.status).toBe(200);
+    expect("ruleAutoApply" in storedConfig(f)).toBe(false);
+    await patch(f, { ruleAutoApply: true });
+    res = await patch(f, { ruleAutoApply: null });
+    expect(res.status).toBe(200);
+    expect("ruleAutoApply" in storedConfig(f)).toBe(false);
+  });
+
+  it("a non-boolean is refused naming the rung and the stakes", async () => {
+    const f = await fixture();
+    const res = await patch(f, { ruleAutoApply: "yes" });
+    expect(res.status).toBe(400);
+    const out = await body<{ error: string }>(res);
+    expect(out.error).toContain("STANDING AUTHORITY");
+    expect(out.error).toContain("yank window");
+  });
+
+  it("the grant write preserves the agent-specific remainder verbatim", async () => {
+    const f = await fixture();
+    await patch(f, { ruleAutoApply: true });
+    const cfg = storedConfig(f);
+    for (const k of Object.keys(REMAINDER)) {
+      expect(cfg[k], k).toEqual((REMAINDER as Record<string, unknown>)[k]);
+    }
   });
 });

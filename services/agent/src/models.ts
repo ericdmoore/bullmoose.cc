@@ -122,6 +122,14 @@ export interface BindingConfig {
   pipeline?: "reply" | "ledger" | "bouncer" | "remind" | "extract";
   persona?: string; // L1
   replyMode?: "send" | "draft";
+  /**
+   * s31 rung 3 — STANDING AUTHORITY, granted: when true, bouncer-composed
+   * sieve-rule changes skip the pending tray and land pre-decided under the
+   * grant (status 'held', the same 5-minute yank window an approval gets,
+   * decision.by = "grant:rule-auto-apply"). Given by an explicit PATCH on
+   * the binding, never accrued; absent = rung 2, every rule is a proposal.
+   */
+  ruleAutoApply?: boolean;
   allowedSenders?: string[];
   defaultModel?: string;
   modelAliases?: Record<string, ModelCandidate[]>;

@@ -810,6 +810,45 @@ export const MIGRATIONS = [
   },
 
   {
+    id: "ceremonies-table",
+    why: "s33 slice 4 — the described-act ledger; a shard without it cannot run any tier-3 ceremony (the new endpoints 500 honestly), and a plain schema re-run creates it",
+    blocks: null,
+    check: tableExists("ceremonies"),
+    up: [
+      `CREATE TABLE IF NOT EXISTS ceremonies (
+         id              TEXT PRIMARY KEY,
+         principal_id    TEXT NOT NULL REFERENCES principals(id),
+         account_id      TEXT NOT NULL,
+         binding_id      TEXT NOT NULL,
+         category        TEXT NOT NULL,
+         description     TEXT NOT NULL,
+         message_id      TEXT,
+         secret_hash     TEXT NOT NULL,
+         status          TEXT NOT NULL DEFAULT 'pending',
+         created_at      INTEGER NOT NULL,
+         expires_at      INTEGER NOT NULL,
+         decided_at      INTEGER,
+         consumed_at     INTEGER,
+         notified_at     INTEGER
+       )`,
+      "CREATE INDEX IF NOT EXISTS ceremonies_principal ON ceremonies (principal_id, status)",
+    ],
+    absent: [],
+  },
+
+  {
+    id: "ceremonies-notified-at",
+    why: "s33 agent-side: the OQ5 fail-notice sweep stamps notified_at; without the column the sweep's UPDATE fails and failed step-ups notify nobody",
+    blocks: null,
+    needs: ["ceremonies-table"],
+    check: hasColumn("ceremonies", "notified_at"),
+    up: ["ALTER TABLE ceremonies ADD COLUMN notified_at INTEGER"],
+    absent: [
+      "CREATE TABLE ceremonies (id TEXT PRIMARY KEY, principal_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending')",
+    ],
+  },
+
+  {
     id: "emails-assurance-json",
     why: "s33 slice 1: delivery's INSERT names the column (the DMARC positive, kept instead of discarded); an ingest deployed against a database missing it fails EVERY delivery",
     blocks: "deploy",

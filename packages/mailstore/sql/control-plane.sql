@@ -144,6 +144,42 @@ CREATE TABLE IF NOT EXISTS webauthn_credentials (
 CREATE INDEX IF NOT EXISTS webauthn_credentials_principal
   ON webauthn_credentials (principal_id);
 
+-- s33 slice 4 — ceremonies: "that you, Kevin?". One row per described act
+-- an agent asked a human to approve with a passkey. The DESCRIPTION is the
+-- product: the page renders it from THIS row (never from the URL), so what
+-- the human approves is what the agent recorded asking for — transaction
+-- signing, not authentication. Rows are never deleted: passed, failed and
+-- expired alike are the disclosure ledger. `category` is OPERATOR-declared
+-- on the binding (s33 OQ2 — a category the agent invents is a category no
+-- one reviewed); `secret_hash` follows the tokens rule (link plaintext
+-- shown once at mint). A PASS row IS the capability: the agent-side gate
+-- checks it directly (passed, unconsumed, in-TTL, category+message match)
+-- and marks it consumed — no bearer is minted, so no plaintext exists to
+-- custody. A deliberate deviation from the plan's "mint a token" letter,
+-- faithful to its every binding.
+CREATE TABLE IF NOT EXISTS ceremonies (
+  id              TEXT PRIMARY KEY,          -- cer_<uuid>
+  principal_id    TEXT NOT NULL REFERENCES principals(id),  -- whose passkey must answer
+  account_id      TEXT NOT NULL,             -- the account disclosure would touch
+  binding_id      TEXT NOT NULL,             -- the role@ that asked
+  category        TEXT NOT NULL,             -- e.g. "benefits.balance" — operator vocabulary
+  description     TEXT NOT NULL,             -- the described act, rendered verbatim
+  message_id      TEXT,                      -- the thread the disclosure answers into
+  secret_hash     TEXT NOT NULL,             -- SHA-256 of the link token
+  status          TEXT NOT NULL DEFAULT 'pending', -- pending|passed|failed|expired
+  created_at      INTEGER NOT NULL,
+  expires_at      INTEGER NOT NULL,          -- minutes, not hours: peak-frustration honest
+  decided_at      INTEGER,
+  -- Use-once: the agent-side gate marks the PASS consumed at disclosure
+  -- time. The ROW is the capability — checked directly, never a bearer
+  -- minted, so there is no plaintext to custody and nothing to leak.
+  consumed_at     INTEGER,
+  -- OQ5: a FAILED ceremony is a signal the real person should see; the
+  -- agent-plane sweep sends that notice once and stamps it here.
+  notified_at     INTEGER
+);
+CREATE INDEX IF NOT EXISTS ceremonies_principal ON ceremonies (principal_id, status);
+
 -- Scoped revocable bearer tokens: device tokens, agent tokens, admin
 -- tokens — one table, one verification path. Plaintext secret is shown
 -- once at mint; only its SHA-256 is stored.

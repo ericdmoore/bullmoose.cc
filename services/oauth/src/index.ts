@@ -4,6 +4,8 @@ import OAuthProvider from "@cloudflare/workers-oauth-provider";
 import { consentPage, DERIVE_LEGACY_PATH, DERIVE_PATH, deriveScript, errorPage } from "./consent.js";
 import { enrollOptions, enrollPage, enrollRegister, enrollScript } from "./enroll.js";
 import { assertionOptions, verifyAssertion } from "./webauthn.js";
+import { ceremonyBegin, ceremonyPage, ceremonyScript, ceremonyVerify } from "./ceremony.js";
+import { listCredentials, revokeCredential } from "./webauthnManage.js";
 import { AUTH_DOCS, docsResponse } from "./docs.js";
 import { recordConsent } from "./consentMirror.js";
 import { revoke } from "./revoke.js";
@@ -120,6 +122,21 @@ export const authorizeHandler = {
     // no email is taken and no credential list returned, so this endpoint
     // cannot be an account-existence oracle. The assertion itself rides the
     // /authorize POST, where decide() shares one tail with the password path.
+    // The tea ceremony proper (s33 slice 4): the described-act page. The
+    // agent writes the row and mails the link; this serves the question and
+    // records the answer. One link, one answer, minutes to live.
+    if (url.pathname === "/ceremony") return ceremonyPage();
+    if (url.pathname === "/ceremony.js") return ceremonyScript();
+    if (url.pathname === "/ceremony/begin" && request.method === "POST") return ceremonyBegin(request, env);
+    if (url.pathname === "/ceremony/verify" && request.method === "POST") return ceremonyVerify(request, env);
+    // Credential list/revoke (s33's closer): own-only, agents refused, and
+    // the last passkey of a passwordless principal stays (webauthnManage.ts).
+    if (url.pathname === "/webauthn/credentials" && request.method === "GET") {
+      return listCredentials(request, env);
+    }
+    if (url.pathname.startsWith("/webauthn/credentials/") && request.method === "DELETE") {
+      return revokeCredential(request, env, decodeURIComponent(url.pathname.slice("/webauthn/credentials/".length)));
+    }
     if (url.pathname === "/webauthn/login/options" && request.method === "POST") {
       return new Response(JSON.stringify({ publicKey: await assertionOptions(env, "login") }), {
         headers: { "content-type": "application/json" },

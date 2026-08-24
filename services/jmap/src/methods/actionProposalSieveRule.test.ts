@@ -276,3 +276,39 @@ describe("retry with a nudge — supersede, never edit", () => {
     expect(again.notUpdated.inv_r1!.description).toContain("closed");
   });
 });
+
+describe("rung 3 — a grant-decided row rides the SAME commit and the SAME yank", () => {
+  const seedGrantHeld = (h: ReturnType<typeof harness>) =>
+    seedRuleProposal(h, {
+      status: "held",
+      decided_at: Date.now(),
+      hold_until: Date.now() + 5 * 60_000,
+      decision_json: JSON.stringify({ by: "grant:rule-auto-apply", note: "standing authority" }),
+    });
+
+  it("the sweep commits it into the rulebook — the apply path never asks who decided", async () => {
+    const h = harness();
+    seedGrantHeld(h);
+    const { committed, failed } = await commitPastHold(h);
+    expect(failed).toEqual([]);
+    expect(committed).toContain("inv_r1");
+    const book = rulebook(h);
+    expect(book).toHaveLength(1);
+    expect(JSON.parse(book[0]!.rules_json)[0].id).toBe("inv_r1");
+    // The decision the row carries FOREVER names the grant, not a human —
+    // which is what the activity realm renders as decided-without-you.
+    expect(JSON.parse(proposalRow(h).decision_json!).by).toBe("grant:rule-auto-apply");
+  });
+
+  it("yank inside the window stops it — auto is exactly as retractable as an approval", async () => {
+    const h = harness();
+    seedGrantHeld(h);
+    // Yank is the held row's retraction verb (a reject would be a category
+    // error — the GRANT approved the action; yank retracts the moment).
+    const res = await h.set({ update: { inv_r1: { status: "yanked" } } });
+    expect(res.notUpdated).toEqual({});
+    await commitPastHold(h);
+    expect(rulebook(h)).toHaveLength(0); // nothing landed, and nothing will
+    expect(proposalRow(h).status).toBe("yanked");
+  });
+});
