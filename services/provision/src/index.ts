@@ -3219,7 +3219,7 @@ async function setBindingEnabled(id: string, enable: boolean, url: URL, env: Env
  * read-modify-write that touches those two keys ONLY and leaves the remainder
  * exactly as it was.
  */
-const BINDING_PATCH_FIELDS = ["enabled", "replyMode", "allowedSenders", "recipientsBookId"] as const;
+const BINDING_PATCH_FIELDS = ["enabled", "replyMode", "allowedSenders", "recipientsBookId", "ruleAutoApply"] as const;
 
 /**
  * The remainder, named in the refusal so the 400 teaches the rule rather than
@@ -3388,6 +3388,18 @@ async function patchAgentBinding(id: string, body: Record<string, unknown>, url:
       }
     }
   }
+  const wantsGrant = "ruleAutoApply" in body;
+  if (wantsGrant && typeof body.ruleAutoApply !== "boolean" && body.ruleAutoApply !== null) {
+    return json(
+      {
+        error:
+          "ruleAutoApply must be true (grant rung 3: bouncer-composed rule changes auto-apply, " +
+          "with a 5-minute yank window), or false/null to revoke. This is STANDING AUTHORITY, " +
+          "given by this explicit write and never accrued (s31)",
+      },
+      400,
+    );
+  }
   const wantsBook = "recipientsBookId" in body;
   if (wantsBook && body.recipientsBookId !== null) {
     if (typeof body.recipientsBookId !== "string" || body.recipientsBookId.trim() === "") {
@@ -3503,7 +3515,16 @@ async function patchAgentBinding(id: string, body: Record<string, unknown>, url:
     if (nextSenders === null) delete nextConfig.allowedSenders;
     else nextConfig.allowedSenders = nextSenders;
   }
-  const preserved = Object.keys(config).filter((k) => k !== "replyMode" && k !== "allowedSenders");
+  // The rung-3 grant is present-or-absent, never stored false: a revoked
+  // grant leaves no key to misread, and the dossier renders exactly what is
+  // granted (s31: "rendered visibly, revocable").
+  if (wantsGrant) {
+    if (body.ruleAutoApply === true) nextConfig.ruleAutoApply = true;
+    else delete nextConfig.ruleAutoApply;
+  }
+  const preserved = Object.keys(config).filter(
+    (k) => k !== "replyMode" && k !== "allowedSenders" && k !== "ruleAutoApply",
+  );
 
   const configChanged = !sameJson(config, nextConfig);
   const bookChanged = nextBook !== binding.recipients_book_id;
