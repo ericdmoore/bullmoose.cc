@@ -189,8 +189,11 @@ your data.
 
 ### The short way — one binary, one token (recommended)
 
-No checkout, no Node, no build. The CLI downloads a published, checksummed
-stack and applies it to _your_ Cloudflare account.
+No checkout, no Node, no build, no toolchain of any kind — one static binary
+and a Cloudflare API token. The CLI downloads a published, checksummed stack
+and applies it to _your_ Cloudflare account over documented APIs, including the
+webmail itself (uploaded to R2 and served by a worker). Nothing shells out;
+there is no step at the end that hands you back to a package manager.
 
 ```sh
 # 1. get the binary (docs/install-cli.md has checksums + platform notes)
@@ -219,11 +222,15 @@ machine and lands only in your account. Full walkthrough:
 
 ### The long way — from source
 
-For hacking on the platform itself. Prerequisites: a domain on a
-[Cloudflare](https://www.cloudflare.com/) account (free plan works), an
-[AWS](https://aws.amazon.com/ses/) account for SES outbound, and
-[Node](https://nodejs.org/) 22+. Authenticate wrangler once with
-`npx wrangler login`.
+For hacking on the platform itself — **this is the only path that needs a
+toolchain.** The workers are TypeScript and wrangler is what bundles and
+deploys them, so a source build needs [Node](https://nodejs.org/) 22+; that is
+a maintainer's concern, not a deployer's. The short way above consumes the
+artifacts this path produces, which is why it needs none of it.
+
+Other prerequisites: a domain on a [Cloudflare](https://www.cloudflare.com/)
+account (free plan works) and an [AWS](https://aws.amazon.com/ses/) account for
+SES outbound. Authenticate wrangler once with `npx wrangler login`.
 
 ```sh
 npm install && npm run typecheck
