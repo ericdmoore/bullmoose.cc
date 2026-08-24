@@ -179,6 +179,10 @@ func runAgentWith(s *bmio.Streams, argv []string, nowMs func() int64) int {
 		return runAgentBackfill(s, a, nowMs)
 	case "serve":
 		return runAgentServe(s, a)
+	case "install":
+		return runAgentInstall(s, a, false)
+	case "uninstall":
+		return runAgentInstall(s, a, true)
 	default:
 		// serve and the dossier verbs land in s43 steps 2–6; the registry
 		// flip is LAST and alone, so until every case above exists, reaching
