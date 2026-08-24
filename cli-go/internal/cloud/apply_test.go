@@ -139,6 +139,10 @@ func (f *applyFake) server(t *testing.T) string {
 			w.Write(env(map[string]string{"id": "route-1"}))
 		case strings.HasSuffix(r.URL.Path, "/workers/domains"):
 			w.Write(env(map[string]string{"id": "domain-1"}))
+		case strings.HasSuffix(r.URL.Path, "/pages/projects"):
+			w.Write(env(map[string]string{"name": "bullmoose-app"}))
+		case strings.Contains(r.URL.Path, "/pages/projects/") && strings.HasSuffix(r.URL.Path, "/domains"):
+			w.Write(env(map[string]string{"id": "pd-1"}))
 		default:
 			f.t.Errorf("unexpected: %s", op)
 			http.NotFound(w, r)
@@ -311,6 +315,83 @@ func TestApply_MigrationRunsWhenCheckSaysMissing(t *testing.T) {
 	}
 	if !found {
 		t.Error("check said missing but the up statement never ran")
+	}
+}
+
+func TestApply_UpdateNeverRotatesSecrets(t *testing.T) {
+	// The rule that protects the vault: worker secrets are write-only, so a
+	// re-run (which is what `cloud update` IS) must not re-mint onto reused
+	// scripts — a rotated VAULT_MASTER_KEY makes every sealed credential
+	// permanently undecryptable, and a rotated shared INTERNAL_TOKEN splits
+	// the fleet. All holders reused → nothing minted, nothing installed.
+	st := fetchFixture(t)
+	probe := freshProbe()
+	probe.Workers = []string{"bullmoose-alpha", "bullmoose-beta"}
+	probe.D1 = []D1Database{{Name: "bullmoose-mail-shard0", UUID: "d1-7"}}
+	probe.KV = []KVNamespace{{Title: "ROUTES", ID: "kv-7"}}
+	probe.R2 = []string{"bullmoose-mail-blobs"}
+	fake, cf := newApplyFake(t)
+	applied, err := ApplyCore(cf, st, probe, BuildPlan(st, probe, "tea.example"),
+		ApplyOpts{Zone: "tea.example", External: map[string]string{"SES_ACCESS_KEY_ID": "x"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(applied.Minted) != 0 {
+		t.Errorf("an update minted secrets: %v", applied.Minted)
+	}
+	if b := fake.bodies["PUT /accounts/a1/workers/scripts/bullmoose-beta/secrets"]; strings.Contains(b, "VAULT_MASTER_KEY") {
+		t.Errorf("VAULT_MASTER_KEY was pushed onto a reused script:\n%s", b)
+	}
+	keptLine := false
+	for _, s := range applied.Steps {
+		if strings.Contains(s, "VAULT_MASTER_KEY") && strings.Contains(s, "kept, not rotated") {
+			keptLine = true
+		}
+	}
+	if !keptLine {
+		t.Error("the receipt must SAY the secret was kept, not silently skip it")
+	}
+	// The external SES key still rides — same value from env, harmless.
+	if b := fake.bodies["PUT /accounts/a1/workers/scripts/bullmoose-alpha/secrets"]; !strings.Contains(b, "SES_ACCESS_KEY_ID") {
+		t.Errorf("operator-supplied externals must still install on update:\n%s", b)
+	}
+}
+
+func TestApply_NewHolderOfKeptSecretIsANamedGap(t *testing.T) {
+	// beta (a VAULT_MASTER_KEY holder) exists; alpha (ADMIN_TOKEN holder) is
+	// new. ADMIN_TOKEN mints (its only holder is created); if a NEW script
+	// ever joined VAULT_MASTER_KEY's holders the right value would be
+	// unreadable — the receipt must name that gap, never mint a split.
+	st := fetchFixture(t)
+	probe := freshProbe()
+	probe.Workers = []string{"bullmoose-beta"}
+	_, cf := newApplyFake(t)
+	applied, err := ApplyCore(cf, st, probe, BuildPlan(st, probe, "tea.example"),
+		ApplyOpts{Zone: "tea.example", External: map[string]string{"SES_ACCESS_KEY_ID": "x"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := applied.Minted["ADMIN_TOKEN"]; !ok {
+		t.Error("ADMIN_TOKEN's only holder is created — it must mint")
+	}
+	if _, ok := applied.Minted["VAULT_MASTER_KEY"]; ok {
+		t.Error("VAULT_MASTER_KEY has a reused holder — it must not mint")
+	}
+}
+
+func TestApply_PagesProjectAndHostname(t *testing.T) {
+	st := fetchFixture(t)
+	probe := freshProbe()
+	fake, cf := newApplyFake(t)
+	if _, err := ApplyCore(cf, st, probe, BuildPlan(st, probe, "tea.example"),
+		ApplyOpts{Zone: "tea.example", External: map[string]string{"SES_ACCESS_KEY_ID": "x"}}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(fake.bodies["POST /accounts/a1/pages/projects"], `"name":"bullmoose-app"`) {
+		t.Error("no pages project create")
+	}
+	if !strings.Contains(fake.bodies["POST /accounts/a1/pages/projects/bullmoose-app/domains"], "app.tea.example") {
+		t.Error("no app hostname attach — the attach is what provisions app.<zone>")
 	}
 }
 

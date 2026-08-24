@@ -181,12 +181,19 @@ func BuildPlan(st *Stack, probe *ProbeResult, zone string) *Plan {
 	dnsWanted["app."+zone] = "custom domain of bullmoose-app (Pages)"
 
 	// DNS — the one class where `exists` can mean REFUSE: a name that
-	// already resolves to something not ours is someone's live thing.
+	// already resolves to something not ours is someone's live thing. But a
+	// record whose content PROVES it serves this platform (a Worker or
+	// Pages edge target — what our own custom-domain attach writes) is a
+	// prior install's, and reusing it is what lets `cloud update` and a
+	// resumed install re-run on the zone they installed. Proof, not
+	// pattern-matching on hope: anything else still refuses.
 	for _, host := range sortedKeysS(dnsWanted) {
 		why := dnsWanted[host]
 		switch {
 		case denied["DNS records"]:
 			add(Item{Kind: "dns", Name: host, Action: Blocked, Detail: why})
+		case dnsOurs(probe.DNS, host):
+			add(Item{Kind: "dns", Name: host, Action: Reuse, Detail: why + " — the existing record already targets this platform"})
 		case dnsTaken(probe.DNS, host):
 			add(Item{Kind: "dns", Name: host, Action: Refuse,
 				Detail: why + " — a record already exists here and the installer never overwrites a resource it did not make; remove or rename it, then re-run"})
@@ -225,6 +232,33 @@ func dnsTaken(records []DNSRecord, host string) bool {
 		}
 	}
 	return false
+}
+
+// dnsOurs: every record on this host provably targets this platform's edge
+// — the shapes our own attach calls write, VERIFIED against production
+// rather than assumed: a Worker custom domain is a proxied placeholder
+// (`AAAA 100::`, the IPv6 discard prefix — `A 192.0.2.1` is its v4 twin;
+// neither can be anyone's real server), a Pages custom domain is a CNAME
+// to *.pages.dev, Email Routing is MX to *.mx.cloudflare.net. One foreign
+// record among them and the host is NOT ours.
+func dnsOurs(records []DNSRecord, host string) bool {
+	found := false
+	for _, r := range records {
+		if !strings.EqualFold(r.Name, host) {
+			continue
+		}
+		found = true
+		content := strings.ToLower(strings.TrimSuffix(r.Content, "."))
+		switch {
+		case r.Type == "AAAA" && content == "100::":
+		case r.Type == "A" && content == "192.0.2.1":
+		case r.Type == "CNAME" && (strings.HasSuffix(content, ".pages.dev") || strings.HasSuffix(content, ".workers.dev")):
+		case r.Type == "MX" && strings.HasSuffix(content, "mx.cloudflare.net"):
+		default:
+			return false
+		}
+	}
+	return found
 }
 
 func sortedKeys(m map[string]bool) []string {

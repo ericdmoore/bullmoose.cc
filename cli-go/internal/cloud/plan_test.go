@@ -128,6 +128,43 @@ func TestPlan_ExistingBullmooseIsResumable(t *testing.T) {
 	}
 }
 
+func TestPlan_OurShapedDNSReuses(t *testing.T) {
+	// The shapes our own attach calls write — verified against production,
+	// not assumed: Worker custom domains are proxied AAAA 100:: placeholders,
+	// Pages is a CNAME to *.pages.dev. A prior install's records must plan
+	// as reuse, or `cloud update` refuses the zone it installed.
+	probe := &ProbeResult{
+		Zone: &ZoneInfo{ID: "z", Name: "tea.example", AccountID: "a"},
+		DNS: []DNSRecord{
+			{Name: "dav.tea.example", Type: "AAAA", Content: "100::"},
+			{Name: "app.tea.example", Type: "CNAME", Content: "bullmoose-app.pages.dev"},
+		},
+	}
+	p := BuildPlan(fixtureStack(t), probe, "tea.example")
+	if len(p.Refusals) != 0 {
+		t.Fatalf("our-shaped records must not refuse: %v", p.Refusals)
+	}
+	dns := itemsBy(p, "dns")
+	if dns["dav.tea.example"].Action != Reuse || dns["app.tea.example"].Action != Reuse {
+		t.Errorf("dns = %v", dns)
+	}
+}
+
+func TestPlan_MixedForeignRecordStillRefuses(t *testing.T) {
+	// One our-shaped record plus one foreign on the SAME host: NOT ours.
+	probe := &ProbeResult{
+		Zone: &ZoneInfo{ID: "z", Name: "tea.example", AccountID: "a"},
+		DNS: []DNSRecord{
+			{Name: "app.tea.example", Type: "CNAME", Content: "bullmoose-app.pages.dev"},
+			{Name: "app.tea.example", Type: "TXT", Content: "someone-elses-verification"},
+		},
+	}
+	p := BuildPlan(fixtureStack(t), probe, "tea.example")
+	if len(p.Refusals) != 1 || p.Refusals[0].Name != "app.tea.example" {
+		t.Fatalf("refusals = %v", p.Refusals)
+	}
+}
+
 func TestPlan_ForeignDNSRefuses(t *testing.T) {
 	probe := &ProbeResult{
 		Zone: &ZoneInfo{ID: "z", Name: "tea.example", AccountID: "a"},
