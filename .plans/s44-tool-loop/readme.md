@@ -294,6 +294,25 @@ disappointing in practice. Until then: no. And the true redundancy story
 for this product is not Cloudflare-plus-vendor — it is cloud-plus-YOUR-
 OWN-BOX; the second provider already exists and it is the local executor.
 
+**Zero runtimes found — offer the install (Eric, 2026-08-24), at the
+honest moment.** Silence has an invisible cost: `sandbox: false` routes
+every compute step to metered cloud seconds without the user learning a
+one-line install makes them free. So: OFFER, in the s43 consent format
+(mutation and reason in one breath — "No container runtime found —
+install Podman so sandbox jobs run free on this machine? y/n"), at one of
+three moments in preference order: (1) demonstrated need — the first
+sandbox-requiring job this host declines; (2) the measured nudge — the
+dossier's receipt line "cloud sandbox this month: $0.42 — a local runtime
+would have made these free" (s45's columns doing anti-nag persuasion);
+(3) the explicit verb, `bullmoose sandbox setup`, the `bullmoose local`
+twin. The picker RECOMMENDS per platform (macOS 26+ → Apple `container`;
+else Podman) — Docker offered, never default (daemon + Docker Desktop's
+commercial licensing is not a liability to recommend into homes). Manage
+the install only where unambiguous and sudo-free (brew); print-don't-run
+elsewhere (the CLI never sudos). `--yes` pre-consents; `n` is recorded
+and never re-asks without a config flag. The prompt stays honest that
+declining leaves the wazero floor and the cloud — narrower, not nothing.
+
 Two rules: (1) NEVER hand-roll the isolation — the build-in-repo culture's
 one standing exception; spend originality on the contract, not on
 seccomp. (2) Containment lives IN the conformance transcripts: negative
