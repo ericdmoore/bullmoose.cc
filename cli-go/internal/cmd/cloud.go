@@ -40,6 +40,9 @@ type cloudArgs struct {
 	Zone         string
 	StackVersion string
 	StackBase    string
+	Dir          string
+	Bucket       string
+	Account      string
 	Positionals  []string
 	badFlag      string
 }
@@ -79,6 +82,12 @@ func parseCloud(argv []string) cloudArgs {
 				a.StackVersion = value()
 			case "stack-base":
 				a.StackBase = value()
+			case "dir":
+				a.Dir = value()
+			case "bucket":
+				a.Bucket = value()
+			case "account":
+				a.Account = value()
 			default:
 				if a.badFlag == "" {
 					a.badFlag = "--" + name
@@ -132,6 +141,8 @@ func runCloud(s *bmio.Streams, argv []string) int {
 		return runCloudInstall(s, a)
 	case "doctor":
 		return runCloudDoctor(s, a)
+	case "webmail":
+		return runCloudWebmail(s, a)
 	case "":
 		return die(s, bmio.Fail("cloud needs a verb: `bullmoose cloud plan|install|doctor --zone <domain>`", bmio.ExitUsage))
 	default:
@@ -294,6 +305,71 @@ func runCloudDoctor(s *bmio.Streams, a cloudArgs) int {
 	if !report.AllOK() {
 		return int(bmio.ExitFail)
 	}
+	return 0
+}
+
+/**
+ * `cloud webmail push --dir <built site>` — put a built webmail in R2.
+ *
+ * The install path uploads the PUBLISHED tarball; this uploads a directory
+ * you just built. It exists so our own CI has something to call instead of
+ * reimplementing the upload in bash: the content-type table, the key
+ * escaping that keeps `_astro/app.js` two segments, and the "there must be
+ * an index.html" rule then have exactly one home (internal/cloud/webmail.go)
+ * rather than one per caller, drifting.
+ *
+ * The account comes from --account or CLOUDFLARE_ACCOUNT_ID, and only falls
+ * back to deriving it from --zone. CI already holds the account id, and
+ * asking it to spend `Zone > Read` for something it can be told is a wider
+ * token for no reason.
+ */
+func runCloudWebmail(s *bmio.Streams, a cloudArgs) int {
+	sub := ""
+	if len(a.Positionals) > 1 {
+		sub = a.Positionals[1]
+	}
+	if sub != "push" {
+		return die(s, bmio.Fail("cloud webmail takes one verb today: `cloud webmail push --dir <built site>`", bmio.ExitUsage))
+	}
+	if a.Dir == "" {
+		return die(s, bmio.Fail("cloud webmail push needs --dir <built site> (webmail/dist after `npm run -w webmail build`)", bmio.ExitUsage))
+	}
+	token := os.Getenv("CLOUDFLARE_API_TOKEN")
+	if token == "" {
+		return die(s, bmio.Fail("CLOUDFLARE_API_TOKEN is not set — this upload needs `Account > Workers R2 Storage > Edit`", bmio.ExitUsage))
+	}
+	bucket := a.Bucket
+	if bucket == "" {
+		bucket = cloud.WebmailBucket
+	}
+	cf := cloud.NewCF(os.Getenv("CLOUDFLARE_API_BASE_URL"), token, nil)
+
+	acct := a.Account
+	if acct == "" {
+		acct = os.Getenv("CLOUDFLARE_ACCOUNT_ID")
+	}
+	if acct == "" {
+		if a.Zone == "" {
+			return die(s, bmio.Fail("no account: pass --account, set CLOUDFLARE_ACCOUNT_ID, or pass --zone to derive it", bmio.ExitUsage))
+		}
+		probe, err := cloud.Probe(cf, a.Zone)
+		if err != nil {
+			return die(s, err)
+		}
+		acct = probe.Zone.AccountID
+	}
+
+	n, err := cloud.UploadWebmailDir(cf, acct, bucket, a.Dir, func(line string) { s.Note("  " + line) })
+	if err != nil {
+		if n > 0 {
+			// Same contract as the installer: what landed stays, and a re-run
+			// overwrites by key. Naming the count makes the retry informed
+			// rather than a coin flip about whether to start over.
+			s.Note("webmail push: stopped after " + strconv.Itoa(n) + " file(s) — re-running is safe, objects overwrite by key")
+		}
+		return die(s, err)
+	}
+	s.Out("webmail pushed to r2://" + bucket + " (" + strconv.Itoa(n) + " objects).")
 	return 0
 }
 

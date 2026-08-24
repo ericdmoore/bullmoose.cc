@@ -8,6 +8,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -105,4 +107,84 @@ func TestContentTypes_AgreeWithTheWorker(t *testing.T) {
 			t.Errorf("%s → %q, want %q", key, got, want)
 		}
 	}
+}
+
+// ---- the directory front door (CI's) obeys the same rules as the tarball ----
+
+func TestWebmailAssetsFromDir_WalksAndKeepsHierarchy(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "index.html", "<!doctype html>")
+	mustWrite(t, dir, "_astro/app.js", "console.log(1)")
+	mustWrite(t, dir, "settings/index.html", "<p>settings</p>")
+
+	assets, err := webmailAssetsFromDir(dir)
+	if err != nil {
+		t.Fatalf("expand: %v", err)
+	}
+	got := map[string]string{}
+	for _, a := range assets {
+		got[a.Key] = string(a.Body)
+	}
+	// Slash-separated keys, not the platform separator: an R2 key is a URL
+	// path, and a Windows build writing `_astro\app.js` would store a key the
+	// worker never asks for.
+	for _, want := range []string{"index.html", "_astro/app.js", "settings/index.html"} {
+		if _, ok := got[want]; !ok {
+			t.Errorf("missing key %q (got %v)", want, keysOf(got))
+		}
+	}
+	if got["_astro/app.js"] != "console.log(1)" {
+		t.Errorf("body not carried through: %q", got["_astro/app.js"])
+	}
+}
+
+func TestWebmailAssetsFromDir_RefusesABuildWithNoEntryPoint(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "_astro/app.js", "console.log(1)")
+
+	_, err := webmailAssetsFromDir(dir)
+	if err == nil || !strings.Contains(err.Error(), "index.html") {
+		t.Fatalf("a build with no index.html must be refused by name, got %v", err)
+	}
+}
+
+func TestWebmailAssetsFromDir_RefusesAnEmptyDirWithABuildHint(t *testing.T) {
+	_, err := webmailAssetsFromDir(t.TempDir())
+	// "contained no files" alone reads like a bug in the uploader; the
+	// overwhelmingly likely cause is that nobody ran the build.
+	if err == nil || !strings.Contains(err.Error(), "build") {
+		t.Fatalf("empty dir should point at the build step, got %v", err)
+	}
+}
+
+// The uploader writes to this bucket; the worker reads from it. If they ever
+// disagree the deploy SUCCEEDS and serves nothing, which is the most
+// expensive shape of wrong available here.
+func TestWebmailBucket_MatchesTheWorkersOwnBinding(t *testing.T) {
+	cfg, err := os.ReadFile(filepath.Join("..", "..", "..", "services", "webhost", "wrangler.jsonc"))
+	if err != nil {
+		t.Fatalf("read webhost config: %v", err)
+	}
+	if !strings.Contains(string(cfg), `"bucket_name": "`+WebmailBucket+`"`) {
+		t.Fatalf("services/webhost/wrangler.jsonc does not bind SITE to %q — the uploader would write where the worker never reads", WebmailBucket)
+	}
+}
+
+func mustWrite(t *testing.T, dir, rel, body string) {
+	t.Helper()
+	p := filepath.Join(dir, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func keysOf(m map[string]string) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

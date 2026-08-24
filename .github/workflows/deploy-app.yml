@@ -1,12 +1,18 @@
 name: Deploy app
 
-# The bullmoose app surface (webmail/, Astro → Cloudflare Pages) at
-# app.bullmoose.cc. Plan: .plans/s07-app-surface/devPlan.md.
+# The bullmoose app surface (webmail/, Astro) at app.bullmoose.cc.
+# Plan: .plans/s07-app-surface/devPlan.md.
+#
+# SERVED FROM R2, NOT PAGES (#368/#369). The build is uploaded to the
+# `bullmoose-webmail` bucket and served by services/webhost. Pages is still
+# deployed below as a live rollback during the transition, but it is no longer
+# what answers: worker routes beat Pages on a shared hostname, so webhost's
+# `app.bullmoose.cc/*` wins every path jmap does not claim.
 #
 # SAME-ORIGIN BY DESIGN. The API is not a separate host: services/jmap owns
 # `app.bullmoose.cc/{api/*, auth/*, .well-known/jmap, console/*, share/*}` via Worker
-# routes, and Pages serves everything else. Worker routes take precedence over
-# Pages on a shared hostname, so the two coexist on one name.
+# routes, and webhost serves everything else. Routes match most-specific-first,
+# so the two coexist on one name.
 #
 # That is not a convenience. The alternative — Pages on app., the worker on
 # api. — makes every request cross-origin, and services/jmap sends NO CORS
@@ -53,6 +59,34 @@ jobs:
       # thing that catches a CSP/hydration break -- `astro build` succeeding
       # while the page renders empty is the s03.C failure mode.
       - run: npm run -w webmail build
+
+      # ---- R2: what actually serves app.bullmoose.cc (#369) ----
+      #
+      # The same bytes go to BOTH destinations during the transition. R2 +
+      # services/webhost is what serves the site; the Pages deploy below is
+      # kept as a live rollback -- delete the webhost route and Pages is
+      # already current, no rebuild needed. Removing Pages is #369 step 6.
+      #
+      # This shells out to the CLI rather than looping `wrangler r2 object
+      # put` in bash, because the upload has RULES -- the content-type table,
+      # the escaping that keeps `_astro/app.js` two key segments, the refusal
+      # to publish a build with no index.html -- and a bash copy would own its
+      # own version of each and drift from the installer's silently. One
+      # implementation, two front doors (internal/cloud/webmail.go).
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli-go/go.mod
+          cache-dependency-path: cli-go/go.sum
+      - name: Push the webmail to R2
+        working-directory: cli-go
+        env:
+          # The R2-capable token (the same one release-stack.yml publishes
+          # with). BULLMOOSE_SITE_DEPLOY_TOKEN is Pages-scoped and cannot
+          # write objects.
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: go run . cloud webmail push --dir ../webmail/dist
+
       # `pages deploy` does NOT create a missing project -- it fails with
       # "Maybe you intended to deploy a Worker project instead?", which reads
       # like a config mistake rather than a missing prerequisite. (deploy.yml's
