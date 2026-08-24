@@ -291,3 +291,192 @@ export async function credentialCount(env: WebAuthnEnv, principalId: string): Pr
 }
 
 export { json as webauthnJson };
+
+// ---- the assertion ceremony (slice 3) -------------------------------------
+//
+// This is the half that needed the real math: an assertion is a SIGNATURE
+// over authenticatorData || sha256(clientDataJSON), verified with the COSE
+// key stored at registration. WebCrypto does the arithmetic; this file does
+// the translations WebCrypto refuses to (COSE map → JWK, and DER ECDSA
+// signatures → the raw r||s WebCrypto expects).
+//
+// Usernameless by design: assertion options carry NO allowCredentials, so
+// the authenticator offers whatever discoverable credential it holds and
+// the server resolves the principal FROM the credential id. A per-email
+// credential list would be an account-existence oracle; an empty list
+// cannot be.
+
+/** COSE EC2/RSA labels → a WebCrypto key. Refuses anything else by name. */
+export async function importCoseKey(publicKeyCose: Uint8Array): Promise<{ key: CryptoKey; alg: number }> {
+  const cose = cborDecode(publicKeyCose).value;
+  if (!(cose instanceof Map)) throw new Error("cose: key is not a map");
+  const kty = cose.get(1);
+  const alg = cose.get(3);
+  if (alg === -7 && kty === 2) {
+    const x = cose.get(-2);
+    const y = cose.get(-3);
+    if (!(x instanceof Uint8Array) || !(y instanceof Uint8Array)) throw new Error("cose: EC2 key missing x/y");
+    const key = await crypto.subtle.importKey(
+      "jwk",
+      { kty: "EC", crv: "P-256", x: b64u(x), y: b64u(y) },
+      { name: "ECDSA", namedCurve: "P-256" },
+      false,
+      ["verify"],
+    );
+    return { key, alg: -7 };
+  }
+  if (alg === -257 && kty === 3) {
+    const n = cose.get(-1);
+    const e = cose.get(-2);
+    if (!(n instanceof Uint8Array) || !(e instanceof Uint8Array)) throw new Error("cose: RSA key missing n/e");
+    const key = await crypto.subtle.importKey(
+      "jwk",
+      { kty: "RSA", n: b64u(n), e: b64u(e) },
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"],
+    );
+    return { key, alg: -257 };
+  }
+  throw new Error(`cose: unsupported kty/alg ${String(kty)}/${String(alg)}`);
+}
+
+/**
+ * DER ECDSA-Sig-Value → raw r||s (32 bytes each). WebAuthn signatures are
+ * DER; WebCrypto's ECDSA verify wants raw. Refuses malformed DER rather
+ * than guessing at offsets.
+ */
+export function derToRaw(der: Uint8Array): Uint8Array {
+  if (der[0] !== 0x30) throw new Error("der: not a sequence");
+  let at = der[1]! === 0x81 ? 3 : 2; // long-form length for big signatures
+  const int = (): Uint8Array => {
+    if (der[at] !== 0x02) throw new Error("der: expected integer");
+    const len = der[at + 1]!;
+    let start = at + 2;
+    let n = der.slice(start, start + len);
+    at = start + len;
+    while (n.length > 32 && n[0] === 0) n = n.slice(1); // strip sign padding
+    if (n.length > 32) throw new Error("der: integer wider than P-256");
+    const out = new Uint8Array(32);
+    out.set(n, 32 - n.length);
+    return out;
+  };
+  const r = int();
+  const s = int();
+  const raw = new Uint8Array(64);
+  raw.set(r, 0);
+  raw.set(s, 32);
+  return raw;
+}
+
+/** Assertion request options — usernameless, single-use KV challenge. */
+export async function assertionOptions(env: WebAuthnEnv, purpose: string): Promise<Record<string, unknown>> {
+  const challenge = b64u(crypto.getRandomValues(new Uint8Array(32)));
+  await env.OAUTH_KV.put(`webauthn:assert:${challenge}`, JSON.stringify({ purpose }), {
+    expirationTtl: CHALLENGE_TTL_S,
+  });
+  return {
+    challenge,
+    rpId: rpIdOf(env),
+    timeout: CHALLENGE_TTL_S * 1000,
+    userVerification: "preferred",
+    allowCredentials: [], // usernameless — see the header
+  };
+}
+
+export interface AssertionPass {
+  principalId: string;
+  credentialId: string;
+  userVerified: boolean;
+}
+
+/**
+ * Verify one assertion end to end. `purpose` must match what the challenge
+ * was minted FOR — a login challenge must not satisfy a future disclosure
+ * ceremony, however valid its signature.
+ */
+export async function verifyAssertion(
+  env: WebAuthnEnv,
+  purpose: string,
+  body: {
+    id?: string;
+    response?: { clientDataJSON?: string; authenticatorData?: string; signature?: string };
+  },
+): Promise<AssertionPass | RegistrationRefusal> {
+  if (!body.id || !body.response?.clientDataJSON || !body.response?.authenticatorData || !body.response?.signature) {
+    return { refused: "the assertion is missing its WebAuthn fields" };
+  }
+  let clientData: { type?: string; challenge?: string; origin?: string };
+  try {
+    clientData = JSON.parse(new TextDecoder().decode(unb64u(body.response.clientDataJSON)));
+  } catch {
+    return { refused: "clientDataJSON did not parse" };
+  }
+  if (clientData.type !== "webauthn.get") return { refused: "clientData.type is not webauthn.get" };
+  if (clientData.origin !== originOf(env)) {
+    return { refused: `origin ${clientData.origin ?? "(none)"} is not ${originOf(env)}` };
+  }
+  if (!clientData.challenge) return { refused: "clientData carries no challenge" };
+  const chalKey = `webauthn:assert:${clientData.challenge}`;
+  const held = await env.OAUTH_KV.get(chalKey);
+  if (!held) return { refused: "unknown or expired challenge — start again" };
+  await env.OAUTH_KV.delete(chalKey); // single-use, consumed before any verify
+  if ((JSON.parse(held) as { purpose: string }).purpose !== purpose) {
+    return { refused: "this challenge was minted for a different ceremony" };
+  }
+
+  const row = await env.DB.prepare(
+    `SELECT principal_id, public_key_cose, counter FROM webauthn_credentials WHERE id = ?`,
+  )
+    .bind(body.id)
+    .first<{ principal_id: string; public_key_cose: string; counter: number }>();
+  if (!row) return { refused: "unknown credential" };
+
+  const authData = unb64u(body.response.authenticatorData);
+  if (authData.length < 37) return { refused: "authenticator data is truncated" };
+  const expectedRpHash = await sha256(new TextEncoder().encode(rpIdOf(env)));
+  if (b64u(authData.slice(0, 32)) !== b64u(expectedRpHash)) {
+    return { refused: "authenticator data is for a different RP ID" };
+  }
+  const flags = authData[32]!;
+  if (!(flags & 0x01)) return { refused: "no user presence — the ceremony was not observed" };
+
+  let verified = false;
+  try {
+    const { key, alg } = await importCoseKey(unb64u(row.public_key_cose));
+    const clientHash = await sha256(unb64u(body.response.clientDataJSON));
+    const signed = new Uint8Array([...authData, ...clientHash]);
+    const sig = unb64u(body.response.signature);
+    verified =
+      alg === -7
+        ? await crypto.subtle.verify(
+            { name: "ECDSA", hash: "SHA-256" },
+            key,
+            derToRaw(sig).slice().buffer as ArrayBuffer,
+            signed.slice().buffer as ArrayBuffer,
+          )
+        : await crypto.subtle.verify(
+            "RSASSA-PKCS1-v1_5",
+            key,
+            sig.slice().buffer as ArrayBuffer,
+            signed.slice().buffer as ArrayBuffer,
+          );
+  } catch (err) {
+    return { refused: `signature verification failed: ${err instanceof Error ? err.message : err}` };
+  }
+  if (!verified) return { refused: "the signature does not verify — this is not the registered key" };
+
+  // Clone detection (WebAuthn §6.1.1): a counter that fails to advance past
+  // a previously-seen nonzero value means two authenticators share one key.
+  // Passkeys commonly report a constant 0, which is fine — 0→0 asserts
+  // nothing either way.
+  const counter = ((authData[33]! << 24) | (authData[34]! << 16) | (authData[35]! << 8) | authData[36]!) >>> 0;
+  if (row.counter > 0 && counter <= row.counter) {
+    return { refused: "signature counter did not advance — possible cloned authenticator; use recovery" };
+  }
+  await env.DB.prepare(`UPDATE webauthn_credentials SET counter = ?, last_used_at = ? WHERE id = ?`)
+    .bind(counter, Date.now(), body.id)
+    .run();
+
+  return { principalId: row.principal_id, credentialId: body.id, userVerified: (flags & 0x04) !== 0 };
+}

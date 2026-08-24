@@ -72,7 +72,7 @@ const optionsFor = async (env: never, token = TOKEN, email = EMAIL) => {
 // server-side reader is tested against independently-built bytes, not its
 // own output.
 
-function cborEncode(value: unknown): Uint8Array {
+export function cborEncode(value: unknown): Uint8Array {
   const out: number[] = [];
   const head = (major: number, len: number) => {
     if (len < 24) out.push((major << 5) | len);
