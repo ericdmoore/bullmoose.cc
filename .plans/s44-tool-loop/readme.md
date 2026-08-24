@@ -276,6 +276,24 @@ flag. The rule that falls out: **the ladder's rungs are interfaces;
 isolation strength is a detected property WITHIN a rung, never a new
 rung.**
 
+**Hosted sandbox platforms — E2B, Modal (Eric, 2026-08-24): not
+second-tier, UNADMITTED.** The N-executors contract could host them
+(both build from container images; the local-executor Firecracker
+objection was about OWNING a VMM, which a platform dissolves). But
+admission buys: (1) a SECOND DATA PROCESSOR for mail content — the
+attachment bytes live in R2 and the Cloudflare sandbox is inside the same
+trust boundary; a third-party executor means user mail egressing to
+someone else's infra, a privacy-posture change deserving its own consent
+story, currently paid zero times; (2) a new secret and egress path in the
+Worker; (3) a new place the negative transcripts must hold (E2B ships
+with internet ON by default — the egress-off assertion would fight the
+provider's grain, per provider, forever). Admission follows the image-lib
+mechanism: a measured need carrying a dossier — realistically a
+`gpu: true` facet (Modal's genuine strength) or Cloudflare limits
+disappointing in practice. Until then: no. And the true redundancy story
+for this product is not Cloudflare-plus-vendor — it is cloud-plus-YOUR-
+OWN-BOX; the second provider already exists and it is the local executor.
+
 Two rules: (1) NEVER hand-roll the isolation — the build-in-repo culture's
 one standing exception; spend originality on the contract, not on
 seccomp. (2) Containment lives IN the conformance transcripts: negative
