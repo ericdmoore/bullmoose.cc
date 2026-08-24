@@ -311,20 +311,65 @@ func TestCalendarUnexpandableRruleViaICalIsRefusedToo(t *testing.T) {
 	}
 }
 
-// TestCalendarOccurrenceEditIsRefusedCleanly — single-occurrence editing is
-// DEFERRED, not shipped half-working (s05 devPlan Risk / sVOL 018 §2). The
-// refusal points at the form that DOES work, and costs nothing.
-func TestCalendarOccurrenceEditIsRefusedCleanly(t *testing.T) {
-	f := newCardFake().withCalendars()
-	_, errOut, code := runCalendarCmd(t, f, "event", "edit", "ev_1", "--occurrence", "2026-07-08")
-	if code != 2 {
-		t.Fatalf("code = %d, want 2", code)
+// #222 — s05 T3's Done-when, finally met: "editing one occurrence leaves the
+// other occurrences untouched (asserted in a test, not assumed)."
+//
+// The old test here pinned the REFUSAL, which is the assertion the issue
+// says was wrong: the devPlan permitted refusing a BARE edit aimed at an
+// occurrence id, and REQUIRED --occurrence to write a recurrenceOverrides
+// entry. These pin the write.
+func TestCalendarOccurrenceEditWritesAnOverride(t *testing.T) {
+	f := newCardFake().withCalendars().withEventWrites("ev_1")
+	out, errOut, code := runCalendarCmd(t, f,
+		"event", "edit", "ev_1", "--occurrence", "2026-07-08T09:00:00", "--title", "moved one")
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, errOut)
 	}
-	if !strings.Contains(errOut, "whole series") {
-		t.Errorf("the refusal must name the supported form: %q", errOut)
+	body := f.argsOf("CalendarEvent/set")
+	// The patch is a NESTED pointer path, which is what leaves every other
+	// occurrence's override in place: replacing `recurrenceOverrides` whole
+	// would silently drop them.
+	if !strings.Contains(body, `recurrenceOverrides/2026-07-08T09:00:00/title`) {
+		t.Errorf("expected a nested override path in the patch:\n%s", body)
+	}
+	if strings.Contains(body, `"recurrenceOverrides":{`) {
+		t.Errorf("the whole override map was replaced — the other occurrences would be lost:\n%s", body)
+	}
+	if !strings.Contains(out+errOut, "edited") {
+		t.Errorf("chrome = %q", out+errOut)
+	}
+}
+
+func TestCalendarOccurrenceRefusesSeriesShapedEdits(t *testing.T) {
+	// Recurrence is a property of the SERIES (RFC 8984 §4.3.3), so an
+	// override cannot carry one. Refusing NAMES the property instead of
+	// letting the server bounce an opaque patch.
+	f := newCardFake().withCalendars()
+	_, errOut, code := runCalendarCmd(t, f,
+		"event", "edit", "ev_1", "--occurrence", "2026-07-08T09:00:00", "--rrule", "FREQ=WEEKLY")
+	if code != 2 || !strings.Contains(errOut, "property of the SERIES") {
+		t.Fatalf("code=%d err=%s", code, errOut)
+	}
+	// The GET is legitimate (the patch is assembled against the stored
+	// event); what must never happen is the WRITE.
+	for _, name := range f.names() {
+		if name == "CalendarEvent/set" {
+			t.Error("a refused occurrence edit still sent CalendarEvent/set")
+		}
+	}
+}
+
+func TestCalendarOccurrenceIdMustBeALocalDateTime(t *testing.T) {
+	// The recurrence id is a KEY in recurrenceOverrides, not a free string:
+	// a typo'd key writes an override for an occurrence that does not exist,
+	// which reads to the user as "the edit did nothing".
+	f := newCardFake().withCalendars()
+	_, errOut, code := runCalendarCmd(t, f, "event", "edit", "ev_1", "--occurrence", "2026-07-08", "--title", "x")
+	if code != 2 || !strings.Contains(errOut, "LocalDateTime") {
+		t.Fatalf("code=%d err=%s", code, errOut)
 	}
 	if n := f.count(); n != 0 {
-		t.Errorf("the refusal must precede the fetch; sent %d request(s)", n)
+		t.Errorf("sent %d request(s); the guard is client-side", n)
 	}
 }
 
