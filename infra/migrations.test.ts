@@ -132,6 +132,9 @@ describe("infra/migrations — the DDL a schema re-run cannot perform", () => {
       "address-books-write-policy",
       "agent-bindings-recipients-book",
       "budget-overage-table",
+      // s33 slice 1: delivery's INSERT names assurance_json, so ingest against
+      // an un-migrated shard fails EVERY delivery — the accounts-deleted-at shape.
+      "emails-assurance-json",
       "grant-lifecycle-via-proposal",
       "grants-revoked-at",
       "invocation-alert-columns",

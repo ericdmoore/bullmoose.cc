@@ -138,6 +138,14 @@ export interface NewEmail {
    * `Email/set` create, `Email/import`. Truncated to `FTS_BODY_LIMIT`.
    */
   bodyText?: string;
+  /**
+   * s33 slice 1 — the structured DMARC positive, e.g.
+   * `{"dmarc":"pass","aligned":"dkim","d":"company.com","at":…}`. Only
+   * inbound delivery supplies it (the edge evaluated the message); every
+   * other writer omits it and the column stays NULL — which means "not
+   * known", NEVER "not authentic".
+   */
+  assurance?: unknown;
 }
 
 /** JMAP Email/query filter (RFC 8621 §4.4.1), the subset we support. */
@@ -1117,8 +1125,8 @@ export class Mailstore {
         .prepare(
           `INSERT INTO emails (id, account_id, blob_id, thread_id, message_id, in_reply_to,
              subject, from_json, to_json, cc_json, bcc_json, preview, size, received_at,
-             has_attachment, attachments_json, ${PROVENANCE_COLUMNS})
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             has_attachment, attachments_json, assurance_json, ${PROVENANCE_COLUMNS})
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           email.id,
@@ -1137,6 +1145,7 @@ export class Mailstore {
           email.receivedAt,
           email.hasAttachment ? 1 : 0,
           JSON.stringify(email.attachments),
+          email.assurance ? JSON.stringify(email.assurance) : null,
           ...this.provenanceValues(),
         ),
       ...email.mailboxIds.map((mb) =>

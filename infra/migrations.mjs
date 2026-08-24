@@ -782,6 +782,15 @@ export const MIGRATIONS = [
        )`,
     ],
   },
+
+  {
+    id: "emails-assurance-json",
+    why: "s33 slice 1: delivery's INSERT names the column (the DMARC positive, kept instead of discarded); an ingest deployed against a database missing it fails EVERY delivery",
+    blocks: "deploy",
+    check: hasColumn("emails", "assurance_json"),
+    up: ["ALTER TABLE emails ADD COLUMN assurance_json TEXT"],
+    absent: ["CREATE TABLE emails (id TEXT NOT NULL, account_id TEXT NOT NULL, PRIMARY KEY (account_id, id))"],
+  },
 ];
 
 /**
