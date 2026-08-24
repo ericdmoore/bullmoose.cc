@@ -1,6 +1,7 @@
 /** @jsxImportSource preact */
 import { useEffect, useMemo, useState } from "preact/hooks";
 import { resolveClient } from "../lib/app/client";
+import { matchesQuery, useRealmSearch } from "../lib/shell/useRealmSearch";
 import { approvalsAccountId } from "../lib/approvals/accounts";
 import { hasAgentCapability } from "../lib/jmap/capabilities";
 import { budgetLine, contractLines } from "../lib/goals/contract";
@@ -153,6 +154,9 @@ export default function GoalsApp({ client: injectedClient }: Props) {
   }, [client, accountId, reloads]);
 
   const ordered = useMemo(() => orderGoals(goals), [goals]);
+  const bar = useRealmSearch();
+  // #225 — a goal IS its statement, so that is the whole match surface.
+  const shown = useMemo(() => ordered.filter((g) => matchesQuery(bar, g.statement)), [ordered, bar]);
   const selected = ordered.find((g) => g.id === selectedId) ?? ordered[0];
   /** The row's detail URL — `/goals?g=<id>`, current query preserved. */
   const goalHref = (id: string): string => hrefWithParam("/goals", "g", id);
@@ -217,7 +221,7 @@ export default function GoalsApp({ client: injectedClient }: Props) {
               have open. `syncDetailUrl` keeps the address bar on the goal
               being read, via replaceState. */}
           <StackedList>
-            {ordered.map((g) => {
+            {shown.map((g) => {
               const tone = goalTone(g.status);
               return (
                 <StackedRow
