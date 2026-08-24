@@ -3,6 +3,34 @@
 > **Status: DESIGN — the decision is made, the migration is not.** Written
 > 2026-08-22 from the #273 conversation: *"With a naming convention then the
 > address spaces become easier to manage."*
+>
+> **Execution plan (2026-08-24), awaiting Eric's go.** Step 1 (onboard the
+> subdomain) is not a pure runbook step — it hits one code gap and one live
+> unknown, in that order:
+>
+> 1. **CODE FIRST: `addDomain` assumes domain == zone.** Its first act is
+>    `/zones?name=${domain}` (provision/index.ts), so `agents.bullmoose.cc`
+>    422s today ("zone not on account"). The fix is a suffix-walk zone
+>    resolution (strip leading labels until a zone matches — the account is
+>    derived the same way `cloud plan` derives it) and writing the
+>    subdomain's DNS records (MX/SPF at `agents.<zone>`, DKIM CNAMEs for the
+>    SES identity `agents.bullmoose.cc`) into the PARENT zone, which the
+>    zone-scoped DNS API supports as-is. Testable against fakes; a normal PR.
+> 2. **THEN THE LIVE UNKNOWN: Email Routing on a subdomain.** Cloudflare's
+>    zone-level Email Routing enable writes apex MX; whether the
+>    rules/catch-all engine accepts `*@agents.bullmoose.cc` destinations (and
+>    what API surface enables subdomain routing on this plan) is a fact to
+>    OBSERVE, not assume. The probe is cheap and honest: run the patched
+>    `admin domain add agents.bullmoose.cc`, read each receipted step, and
+>    `cloud doctor --zone` after. If CF's routing declines subdomain
+>    addresses on this plan, the fallback is SES inbound for the agent
+>    subdomain only — a bigger decision, brought back here before building.
+> 3. **Then the runbook as written below**: new agents provision on
+>    `agents.`; existing apex agents dual-route (step 2 below); nothing
+>    retires without a reason.
+>
+> OQ2 (test personas' namespace) and OQ4 (#273 closes as obsolete) ride the
+> same PR's close-out.
 
 ## The decision
 
