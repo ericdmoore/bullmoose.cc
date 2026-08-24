@@ -158,7 +158,9 @@ var registry = map[string]spec{
 	"send": {json: true, run: runSend,
 		value: []string{"db", "account", "from", "identity", "to", "cc", "bcc", "subject", "file", "body",
 			"expandMD", "linkMax", "linkTTL"},
-		boolean: []string{"json"}},
+		// s40: --dry-run inspects the resolved envelope; --yes pre-consents
+		// the frontmatter confirms (file-supplied recipients, no subject).
+		boolean: []string{"json", "dry-run", "yes"}},
 	"approvals": {json: true, goNative: true, run: runApprovals},
 	"agents":    {json: true, goNative: true, run: runAgents},
 	// `version` (s08 T7): which binary is this? GO-NATIVE — Node's version
