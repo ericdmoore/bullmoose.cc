@@ -228,6 +228,15 @@ func runSend(s *bmio.Streams, argv []string) int {
 	if front, stripped := markdown.SplitFrontmatter(body); front != "" {
 		fk := markdown.ParseFrontmatterKeys(front)
 		for _, k := range fk.Unknown {
+			if strings.EqualFold(k, "from") {
+				// Not a typo and not a stranger: a deliberate refusal. The
+				// sending identity is the CLI's logged-in principal, ALWAYS —
+				// "this file says where to send" and "this file says who I
+				// am" are different risk classes, and the second is never
+				// file content. The sentence says so instead of "ignored".
+				s.Note("note: from: comes from your CLI identity, never from the file")
+				continue
+			}
 			s.Note("note: frontmatter key ignored: " + k)
 		}
 		conflict := func(name string, vals []string) {

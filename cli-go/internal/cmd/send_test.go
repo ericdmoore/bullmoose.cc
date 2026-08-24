@@ -706,3 +706,18 @@ func TestSend_UnknownKeyNamed(t *testing.T) {
 		t.Errorf("typo not named: %q", errOut)
 	}
 }
+
+func TestSend_FromKeyGetsItsOwnSentence(t *testing.T) {
+	// Eric, reviewing #345: "I thought FROM would be implied from the
+	// principal actor logged into the CLI?" It is — and a file that tries to
+	// say otherwise deserves a sentence about identity, not a typo warning.
+	f := newMailFake()
+	file := sendMD(t, "---\nfrom: attacker@evil.example\nto: a@b.test\nsubject: hi\n---\nbody\n")
+	_, errOut, _ := runCmd(t, runSend, sendEnv(t, f), "send", "--file", file, "--dry-run")
+	if !strings.Contains(errOut, "from: comes from your CLI identity, never from the file") {
+		t.Errorf("identity sentence missing: %q", errOut)
+	}
+	if strings.Contains(errOut, "ignored: from") {
+		t.Errorf("from lumped with typos: %q", errOut)
+	}
+}
