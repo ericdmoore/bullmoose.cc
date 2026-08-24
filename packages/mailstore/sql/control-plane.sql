@@ -173,7 +173,10 @@ CREATE TABLE IF NOT EXISTS ceremonies (
   -- Use-once: the agent-side gate marks the PASS consumed at disclosure
   -- time. The ROW is the capability — checked directly, never a bearer
   -- minted, so there is no plaintext to custody and nothing to leak.
-  consumed_at     INTEGER
+  consumed_at     INTEGER,
+  -- OQ5: a FAILED ceremony is a signal the real person should see; the
+  -- agent-plane sweep sends that notice once and stamps it here.
+  notified_at     INTEGER
 );
 CREATE INDEX IF NOT EXISTS ceremonies_principal ON ceremonies (principal_id, status);
 
