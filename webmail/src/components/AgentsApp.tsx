@@ -4,6 +4,7 @@ import AgentConsole from "./AgentConsole";
 import AgentDossierPanel, { type BindingCredential, type BindingToggle } from "./AgentDossierPanel";
 import CollectionBar from "./CollectionBar";
 import CollectionColumn, { useCollapsed } from "./CollectionColumn";
+import { publishGroups } from "../lib/shell/publishGroups";
 import {
   Alert,
   Avatar,
@@ -197,6 +198,11 @@ export default function AgentsApp({ reads: injectedReads, client: injectedClient
   const rows = useMemo(() => agentListRows(agents, dossiers), [agents, dossiers]);
   const visible = useMemo(() => filterAgentRows(rows, query), [rows, query]);
   const collections = useMemo(() => agentCollections(rows), [rows]);
+
+  // s25 T4 (#226): the tray renders leaf-nodes only for realms that
+  // publish. One line, off the SAME array the column renders, so the
+  // two can never disagree about what this realm's collections are.
+  useEffect(() => publishGroups("agents", "/agents", collections), [collections]);
 
   // Selection self-repair: the requested row if visible, else the first — so a
   // `?ag=` naming a binding this session cannot reach degrades to the first

@@ -30,6 +30,7 @@ import type { JmapClient } from "../lib/jmap/JmapClient";
 import { browsableMailboxes, loadMailboxes } from "../lib/mail/mailboxes";
 import type { Mailbox } from "../lib/mail/types";
 import CollectionColumn from "./CollectionColumn";
+import { publishGroups } from "../lib/shell/publishGroups";
 import { Button } from "./ui";
 
 // `/search` is the FINDER (s20 T5) — directed find over your OWN mail
@@ -254,6 +255,11 @@ export default function FinderApp({ client: injected }: Props) {
       }),
     [saved, sessions, current, dateGroups],
   );
+
+  // s25 T4 (#226): the tray renders leaf-nodes only for realms that
+  // publish. One line, off the SAME array the column renders, so the
+  // two can never disagree about what this realm's collections are.
+  useEffect(() => publishGroups("finder", "/finder", collections), [collections]);
 
   const onCollection = (id: string) => {
     const target = parseCollectionId(id);

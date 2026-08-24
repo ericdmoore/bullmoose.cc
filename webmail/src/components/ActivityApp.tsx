@@ -15,6 +15,7 @@ import { accountLabel, approvalsAccounts } from "../lib/approvals/rows";
 import { hrefWithParam, urlParam } from "../lib/shell/publish";
 import { DecidedDetail, FeedRow, WatchDetail } from "./ActivityRows";
 import CollectionColumn from "./CollectionColumn";
+import { publishGroups } from "../lib/shell/publishGroups";
 import { Alert, Column, EmptyState, PageNotice, StackedList, SurfaceFrame } from "./ui";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
@@ -138,6 +139,11 @@ export default function ActivityApp({ client: injectedClient, now: fixedNow }: P
   const ordered = useMemo(() => orderFeed(items), [items]);
   const activeList = useMemo(() => filterFeed(ordered, collection), [ordered, collection]);
   const groups = useMemo(() => activityCollections(ordered), [ordered]);
+
+  // s25 T4 (#226): the tray renders leaf-nodes only for realms that
+  // publish. One line, off the SAME array the column renders, so the
+  // two can never disagree about what this realm's collections are.
+  useEffect(() => publishGroups("activity", "/activity", groups), [groups]);
 
   const selected = activeList.find((i) => i.id === selectedId) ?? activeList[0];
   /** The row's detail URL — `/activity?a=<id>`, current query preserved. */

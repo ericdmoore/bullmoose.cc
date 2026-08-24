@@ -35,6 +35,7 @@ import { FILENODE_CAP, hasCapability } from "../lib/jmap/capabilities";
 import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
 import CollectionColumn from "./CollectionColumn";
+import { publishGroups } from "../lib/shell/publishGroups";
 import type { CollectionGroup } from "../lib/shell/collections";
 import { hrefWithParams, urlParam } from "../lib/shell/publish";
 import { isUnmodifiedPrimaryClick, syncDetailUrl } from "../lib/ui/navigation";
@@ -531,6 +532,11 @@ export default function FilesApp({ client: injected, search }: Props) {
       },
     ];
   }, [directories]);
+
+  // s25 T4 (#226): the tray renders leaf-nodes only for realms that
+  // publish. One line, off the SAME array the column renders, so the
+  // two can never disagree about what this realm's collections are.
+  useEffect(() => publishGroups("files", "/files", fileGroups), [fileGroups]);
 
   // ── render ──────────────────────────────────────────────────────────────
 
