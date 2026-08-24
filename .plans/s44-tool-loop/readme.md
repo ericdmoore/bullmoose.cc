@@ -203,6 +203,32 @@ the SQL rides back as the citation — the sieve-rule instinct (generation
 is fallible; verification is deterministic; the artifact is reviewable)
 applied to data instead of filters.
 
+**The image request — grant-request, image edition (Eric, 2026-08-24).**
+An agent that hits a missing capability completes honestly as
+blocked-on-capability and emits a PROPOSAL: "I'd benefit from <lib>
+because <reason>". A research invocation may investigate the liability
+(maintenance, CVEs, native bindings, install scripts, transitive deps) and
+its output rides the proposal as EVIDENCE — the ask arrives carrying its
+dossier. The human decides (beneficiary-cannot-self-approve, s10,
+unchanged), and because approval widens the image FOR EVERYONE it is an
+operator-level admission reviewed once — which buys software provenance by
+the rulebook's own mechanism: every binary in the image traceable to the
+ledger row that admitted it. Approval enqueues a SUCCESSOR invocation (the
+sieve-retry mechanics verbatim); whether the re-run even uses the lib is a
+MEASUREMENT, not a guarantee — the request recorded a real miss, and
+approved-but-never-used libs are a dossier stat and their own finding.
+
+**Lifecycle — the box is INVOCATION-SCOPED, and every timer agrees with
+the ledger.** Born at the invocation's first sandbox call; kept warm
+across THAT invocation's turns (exec → inspect → exec needs its
+intermediate files); killed at completion — graceful shutdown already
+guarantees the kill fires on a runtime restart. Backstops: a wall-clock
+cap derived from the binding's budget, and a TTL reaper for orphans (the
+stale-running reaper's sibling). NEVER a standing box: a warm home
+directory across invocations is where a poisoned file waits for the next
+job — the security argument and the billing argument reach the same
+verdict. Sandbox-seconds land in the s45 cost columns per invocation.
+
 Sequencing: after the first tool family — it is tool N+1 through the same
 door, with the same per-tool injection review, not a new architecture.
 
