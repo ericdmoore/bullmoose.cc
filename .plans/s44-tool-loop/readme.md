@@ -157,6 +157,43 @@ The prior art: s43's eleven invariants were this contract for template mode
 and s45 slice 3 finished the receipt half — a homelab run lands in the same
 columns a cloud run does.
 
+## Cloud-defined sandboxes (Eric, 2026-08-24) — compute as a server-side tool
+
+Cloudflare Sandbox (containers driven from a Worker: exec/runCode/files,
+configurable egress, per-container isolation) resolves a tension this plan
+had merely suppressed. "No bash tool, ever" was two objections fused: the
+VENUE FORK (a CLI-local shell makes capability differ by where you run) and
+the BLAST RADIUS (code amid the user's real files and credentials). A
+sandbox defined in OUR Worker un-fuses them — the definition lives
+server-side like every other tool, both venues reach it through the same
+tools/call door, and what executes is disposable. Eric's framing is the
+architecture: an RPi invokes elephant-sized sandboxes and looks mousey in
+the mirror — compute asymmetry between venues DELETED, capability facets
+left to what genuinely differs (models).
+
+Admissible under this plan's posture on four containment rules:
+
+1. **No credentials inside, ever.** The sandbox receives data the harness
+   wrote in — never tokens; its user-scope is the invocation id, not the
+   human. Compute is "act on this data", never "act as this person".
+2. **Egress OFF by default.** Outbound is configurable, and that is where
+   the new hole lives: attacker-steered code exfiltrating what the harness
+   fed it. v1 allowlist: empty.
+3. **Harness-mediated I/O, size-bounded both ways** — and stdout gets the
+   L0 treatment on return, because sandbox output is attacker-INFLUENCEABLE
+   content re-entering the context window. Data to read, framed as such.
+4. **Metered and stamped.** Sandbox minutes are real money; they land in
+   the s45 cost columns, budget-bounded like tokens.
+
+What it unlocks: **the attachment family** — the ladder's missing row.
+Bullmoose cannot open a spreadsheet today. "What did we spend, per the
+attached CSVs"; the .ics parse s36's UID-merge wanted; format conversion;
+ledger crunching. Tier-two problems where the unknown is the COMPUTATION,
+which no read-only noun serves and no model should eyeball.
+
+Sequencing: after the first tool family — it is tool N+1 through the same
+door, with the same per-tool injection review, not a new architecture.
+
 ## The ladder of problems — what each tier buys (Eric's question, 2026-08-24)
 
 What separates the tiers is WHAT IS UNKNOWN in advance:
