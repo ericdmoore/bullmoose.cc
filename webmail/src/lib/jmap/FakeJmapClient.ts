@@ -227,6 +227,25 @@ export class FakeJmapClient implements JmapClient {
     this.cursors.set(collection, state);
   }
 
+  /** #339 — the demo mints a link that is obviously a demo: the shape is
+   *  real (url/shareId/expiresAt) so the UI is exercised, and the host says
+   *  what it is so nobody pastes it anywhere expecting it to resolve. */
+  async mintShare(
+    accountId: Id,
+    blobId: string,
+    _body: { name: string; type?: string; ttlSeconds?: number },
+  ): Promise<Response> {
+    const shareId = `sh-${++this.uploadSeq}`;
+    return new Response(
+      JSON.stringify({
+        url: `https://demo.invalid/share/${encodeURIComponent(accountId)}/${encodeURIComponent(blobId)}/${shareId}`,
+        shareId,
+        expiresAt: Date.now() + 7 * 24 * 60 * 60_000,
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  }
+
   async upload(_accountId: Id, body: Blob | Uint8Array, _type: string): Promise<UploadResult> {
     const blobId = `blob-${++this.uploadSeq}`;
     // Blob is accepted because the real client takes one (a browser `File`);
