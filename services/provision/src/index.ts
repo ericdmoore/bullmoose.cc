@@ -10,6 +10,7 @@ import {
   resolveMintScopes,
 } from "@bullmoose/auth-core";
 import { BUREAU_VERBS, isBureauVerb } from "@bullmoose/auth-core/principal";
+import { adminRefusalReason } from "./reservedLocalparts";
 // s26 T4 — the BYOK core, shared with the session door
 // (`services/jmap/src/methods/providerCredential.ts`). ONE implementation of
 // seal → grant → attach, because two writers of `config_json.providerCredentials`
@@ -977,6 +978,9 @@ async function createAccount(
     localpart: string;
     displayName: string;
     principalEmail?: string;
+    /** Explicit, audited override for a reserved local-part — the admin
+     *  claiming `postmaster@` deliberately. A self-serve path never sets it. */
+    allowReserved?: boolean;
   },
   env: Env,
 ) {
@@ -986,6 +990,22 @@ async function createAccount(
   const localpart = body.localpart.toLowerCase();
   const address = `${localpart}@${domain}`;
   const now = Date.now();
+
+  // s33's 🔴 — reserved names refuse BEFORE any check touches the database,
+  // so the refusal costs nothing and leaks nothing (not even "is it taken").
+  const reserved = adminRefusalReason(localpart);
+  if (reserved && body.allowReserved !== true) {
+    return json(
+      {
+        error:
+          `${localpart}@ is reserved (${reserved}) — if you are the operator claiming it deliberately, ` +
+          `re-send with {"allowReserved": true}`,
+        localpart,
+        reserved,
+      },
+      422,
+    );
+  }
 
   // The route row references domains(domain); creating a mailbox on an
   // unwired domain must be a clear client error, not an FK 500.
