@@ -335,6 +335,19 @@ declining leaves the wazero floor and the cloud — narrower, not nothing.
      agent container" invocation, rung 1's detection may someday prefer
      it over raw docker-run flags. Evidence-gated.
 
+Two more through the test (Eric, 2026-08-24): **seatbelt** — nothing to
+offer, literally: built into macOS, its invocation surface
+(`sandbox-exec`) deprecated by Apple for years, and a profile language
+we'd author (question 1, failed) on the platform where the ladder is
+already richest. **bubblewrap** — nsjail's failure in a friendlier
+package: mature and Flatpak-proven, but a namespace CONSTRUCTOR with no
+image story; question 1 again, differing in degree not category. Noted
+as the BUILDING MATERIAL for a first-party bare-floor Linux executor if
+a measured need for native-binaries-without-OCI ever arrives — material
+for us, never a rung offered to users. **Windows** resolves without
+either: the wazero floor (pure Go, in the binary) plus the install-offer
+pointing at Podman-under-WSL2.
+
 The offer list is not a catalog of sandbox-adjacent tools; it is
 conforming executors for ONE contract.
 
