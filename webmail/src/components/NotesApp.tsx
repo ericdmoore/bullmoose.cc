@@ -22,6 +22,7 @@ import { hrefWithParam, urlParam } from "../lib/shell/publish";
 import { listRowClasses } from "../lib/ui/classes";
 import { isUnmodifiedPrimaryClick, syncDetailUrl } from "../lib/ui/navigation";
 import CollectionColumn from "./CollectionColumn";
+import { publishGroups } from "../lib/shell/publishGroups";
 import { ListContainer } from "./ui";
 import Button from "./ui/Button";
 import type { JmapClient } from "../lib/jmap/JmapClient";
@@ -169,6 +170,11 @@ export default function NotesApp({ client: injectedClient }: Props) {
   const ordered = useMemo(() => orderNotes(notes), [notes]);
   const visible = useMemo(() => filterNotes(ordered, query), [ordered, query]);
   const groups = useMemo(() => notesCollections(ordered), [ordered]);
+
+  // s25 T4 (#226): the tray renders leaf-nodes only for realms that
+  // publish. One line, off the SAME array the column renders, so the
+  // two can never disagree about what this realm's collections are.
+  useEffect(() => publishGroups("notes", "/notes", groups), [groups]);
   const selected = composing ? undefined : visible.find((n) => n.id === selectedId);
 
   // Keep a valid selection as the list changes under us — the same self-repair
