@@ -1,10 +1,10 @@
 bullmoose-help-artifact 1
 spec packages/cli/src/help.ts sha256=7146586e07ed53c8ae8eb9f486415d2234a155ec250971751de649ef62356ee0
-body sha256=c4e8b9a00dc5035e0c4f7874e444033db801629baa7b79a8bb214acca4939c0b
+body sha256=abc4bab2c52fe8a8023d37432c09483b83825bcd5931c31ac781f22694735dab
 placeholder __BM_TOPIC__
 commands help login discover repoint init token accounts sync send read watch vacation agent models local contacts calendar creds log search show mailboxes mailbox flag seen move label archive junk trash rm delete blobs share identity admin
 --
-entry json 0 79016 0
+entry json 0 79308 0
 {
   "name": "bullmoose",
   "tagline": "the CLI for the bullmoose personal-data platform — mail, contacts, calendar, email-native agents, and operator admin, over JMAP",
@@ -364,6 +364,14 @@ entry json 0 79016 0
         {
           "flag": "--linkTTL <days>",
           "desc": "share-link lifetime (default 30)"
+        },
+        {
+          "flag": "--dry-run",
+          "desc": "print the RESOLVED envelope (after frontmatter merge) and send nothing"
+        },
+        {
+          "flag": "--yes",
+          "desc": "pre-consent the frontmatter confirms (file-supplied recipients, missing subject)"
         }
       ],
       "examples": [
@@ -1671,7 +1679,7 @@ entry json 0 79016 0
 }
 
 
-entry man 0 61168 0
+entry man 0 61342 0
 .TH BULLMOOSE 1 "" "bullmoose" "User Commands"
 .SH NAME
 bullmoose \- the CLI for the bullmoose personal\-data platform — mail, contacts, calendar, email\-native agents, and operator admin, over JMAP
@@ -2036,6 +2044,8 @@ render Markdown to HTML (default: no)
 big\-file threshold (default 4)
 .TP
 .B \-\-linkTTL <days>
+\-\-dry-run  print the RESOLVED envelope (after frontmatter merge) and send nothing
+\-\-yes  pre-consent the frontmatter confirms (file-supplied recipients, missing subject)
 share\-link lifetime (default 30)
 .PP
 .B Examples:
@@ -3193,7 +3203,7 @@ Local SQLite message log (override with \-\-db or $BULLMOOSE_DB).
 Project docs: https://github.com/ericdmoore/bullmoose.cc
 
 
-entry markdown 0 63060 0
+entry markdown 0 63258 0
 # bullmoose CLI
 
 > the CLI for the bullmoose personal-data platform — mail, contacts, calendar, email-native agents, and operator admin, over JMAP
@@ -3486,6 +3496,8 @@ Body comes from --file, else --body, else piped stdin. With --expandMD html the 
 | `--expandMD html\|no` | render Markdown to HTML (default: no) |
 | `--linkMax <MiB>` | big-file threshold (default 4) |
 | `--linkTTL <days>` | share-link lifetime (default 30) |
+--dry-run              print the RESOLVED envelope (after frontmatter merge) and send nothing
+--yes                  pre-consent the frontmatter confirms (file-supplied recipients, missing subject)
 
 **Examples**
 
@@ -4754,7 +4766,7 @@ EXAMPLES
 SEE ALSO: bullmoose help watch, bullmoose help log, bullmoose help search
 
 
-entry command:send 0 1347 0
+entry command:send 0 1557 0
 bullmoose send — compose and send mail (Markdown → MIME, inline images, big-file links)
 
 SYNOPSIS
@@ -4776,6 +4788,8 @@ FLAGS
   --expandMD html|no         render Markdown to HTML (default: no)
   --linkMax <MiB>            big-file threshold (default 4)
   --linkTTL <days>           share-link lifetime (default 30)
+  --dry-run                  print the RESOLVED envelope (after frontmatter merge) and send nothing
+  --yes                      pre-consent the frontmatter confirms (file-supplied recipients, missing subject)
 
 EXAMPLES
   $ echo "it lives" | bullmoose send --to a@b.com --subject "first light"

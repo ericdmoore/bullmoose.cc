@@ -1,7 +1,9 @@
 # s40 — Markdown headers · *a message is a file you can keep*
 
-> **Status: DESIGN — every open question ANSWERED 2026-08-22 (Eric); see
-> "Decisions" below. Unbuilt.**
+> **Status: T1+T2 SHIPPED 2026-08-24** — the closed-set reader, flag-beats-file
+> with conflicts said out loud, unknown keys named, file-supplied recipients
+> confirm (the build-time decision, taken), `--dry-run` resolved envelope,
+> `--yes` pre-consent. T3 (`--emit`, message back to Markdown) remains open.
 > Suppression shipped with the renderer (#284); honouring is
 > unbuilt. Written 2026-08-22 from Eric's question — *"does goldmark support
 > frontmatter?"* — and the answer that it does not, and that what it renders

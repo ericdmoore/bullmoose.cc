@@ -195,11 +195,6 @@ func runSend(s *bmio.Streams, argv []string) int {
 	}
 	cc := splitAddresses(a.CC)
 	bcc := splitAddresses(a.BCC)
-	// The gate, and it is above every round trip on purpose: no destination, no
-	// requests, nothing created server-side (main.ts:589).
-	if len(to) == 0 {
-		return die(s, bmio.Usage("send requires --to"))
-	}
 	subject := a.Subject
 
 	// main.ts:596 readBody: an explicit --body beats implicit stdin, and an
@@ -210,6 +205,120 @@ func runSend(s *bmio.Streams, argv []string) int {
 	body, err := readBody(a)
 	if err != nil {
 		return die(s, err)
+	}
+
+	// ---- s40: frontmatter becomes the envelope -----------------------------
+	//
+	// A message is a file you can keep: `to/cc/bcc/subject` in the file's
+	// frontmatter are honoured, with the rules .plans/s40 settled —
+	//   - the FLAG BEATS THE FILE, and a conflict is said on stderr, never
+	//     silently resolved (silent override sends the wrong subject; silent
+	//     merge sends an unnoticed bcc);
+	//   - unknown keys are ignored AND NAMED, so a `subjcet:` typo is visible;
+	//   - `from` is not a key at all — the file says where to send, never who
+	//     you are;
+	//   - recipients that came from the FILE confirm before sending (the
+	//     build-time decision the plan flagged: it costs nothing when you are
+	//     looking at your own file, and it closes the case where a .md that
+	//     ARRIVED BY MAIL is later piped — the recipient-injection shape of
+	//     #158). `--yes` pre-consents; `--dry-run` inspects.
+	// Both confirms below are scoped to the frontmatter path: a flags-only
+	// invocation keeps today's contract byte-for-byte, scripts included.
+	fileRecipients := false
+	if front, stripped := markdown.SplitFrontmatter(body); front != "" {
+		fk := markdown.ParseFrontmatterKeys(front)
+		for _, k := range fk.Unknown {
+			if strings.EqualFold(k, "from") {
+				// Not a typo and not a stranger: a deliberate refusal. The
+				// sending identity is the CLI's logged-in principal, ALWAYS —
+				// "this file says where to send" and "this file says who I
+				// am" are different risk classes, and the second is never
+				// file content. The sentence says so instead of "ignored".
+				s.Note("note: from: comes from your CLI identity, never from the file")
+				continue
+			}
+			s.Note("note: frontmatter key ignored: " + k)
+		}
+		conflict := func(name string, vals []string) {
+			s.Note("note: --" + name + " beats the file's " + name + ": " + strings.Join(vals, ", "))
+		}
+		if len(fk.To) > 0 {
+			if len(to) > 0 {
+				conflict("to", fk.To)
+			} else {
+				to = splitAddresses(fk.To)
+				fileRecipients = true
+			}
+		}
+		if len(fk.Cc) > 0 {
+			if len(cc) > 0 {
+				conflict("cc", fk.Cc)
+			} else {
+				cc = splitAddresses(fk.Cc)
+				fileRecipients = true
+			}
+		}
+		if len(fk.Bcc) > 0 {
+			if len(bcc) > 0 {
+				conflict("bcc", fk.Bcc)
+			} else {
+				bcc = splitAddresses(fk.Bcc)
+				fileRecipients = true
+			}
+		}
+		if fk.HasSubject {
+			if subject != "" {
+				conflict("subject", []string{fk.Subject})
+			} else {
+				subject = fk.Subject
+			}
+		}
+		body = stripped
+
+		// The two required fields fail differently, and the asymmetry is
+		// right: a recipient-less mail is never anything but a mistake; a
+		// subject-less one is legal and occasionally meant, so it asks.
+		if !a.DryRun && len(to) > 0 {
+			confirm := defaultConfirm(s, a.Yes)
+			if fileRecipients {
+				s.Note("recipients came from the FILE, not a flag:")
+				s.Note("  to: " + joinAddresses(to) + envelopeLine("cc", cc) + envelopeLine("bcc", bcc))
+				if !confirm("send to these file-supplied recipients? [y/N] ") {
+					s.Note("not sent")
+					return 1
+				}
+			}
+			if subject == "" {
+				s.Note("this message has no subject — not recommended")
+				if !confirm("send without a subject? [y/N] ") {
+					s.Note("not sent")
+					return 1
+				}
+			}
+		}
+	}
+
+	// The gate, and it is above every round trip on purpose: no destination, no
+	// requests, nothing created server-side (main.ts:589).
+	if len(to) == 0 {
+		return die(s, bmio.Usage("send requires --to (a flag, or a to: in the file's frontmatter)"))
+	}
+
+	// ---- s40: --dry-run shows the RESOLVED envelope and stops --------------
+	// Whatever the merge decided, a person can see who this will actually
+	// reach before it goes; there is no unsend. Zero round trips.
+	if a.DryRun {
+		s.Out("dry run — nothing sent")
+		s.Out("  to:      " + joinAddresses(to))
+		if len(cc) > 0 {
+			s.Out("  cc:      " + joinAddresses(cc))
+		}
+		if len(bcc) > 0 {
+			s.Out("  bcc:     " + joinAddresses(bcc))
+		}
+		s.Out("  subject: " + subject)
+		s.Out(fmt.Sprintf("  body:    %d byte(s)", len(body)))
+		return 0
 	}
 
 	// ---- 1. Identity/get — who is sending -----------------------------------
@@ -406,6 +515,25 @@ func runSend(s *bmio.Streams, argv []string) int {
 // splitAddresses is main.ts:767: flatten on commas, trim, drop empties. So
 // `--to "a@x, b@x" --to c@x` is three recipients, and a trailing comma is not a
 // fourth empty one.
+// joinAddresses renders an address list the way the dry-run and the
+// file-recipient confirm show it -- what will actually be reached.
+func joinAddresses(list []address) string {
+	parts := make([]string, len(list))
+	for i, a := range list {
+		parts[i] = a.Email
+	}
+	return strings.Join(parts, ", ")
+}
+
+// envelopeLine is joinAddresses with its label, empty when the list is --
+// the confirm prints only what exists.
+func envelopeLine(label string, list []address) string {
+	if len(list) == 0 {
+		return ""
+	}
+	return "  " + label + ": " + joinAddresses(list)
+}
+
 func splitAddresses(values []string) []address {
 	out := []address{}
 	for _, v := range values {

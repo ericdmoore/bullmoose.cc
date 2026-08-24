@@ -85,8 +85,10 @@ func TestSend_NoRecipientSendsNothing(t *testing.T) {
 	if code != 2 {
 		t.Errorf("code = %d, want 2 (usage)", code)
 	}
-	if errOut != "error: usage: send requires --to\n" {
-		t.Errorf("stderr = %q, want main.ts:589's sentence", errOut)
+	// The byte-identity pin retired with the Node burial (#317); the sentence
+	// now names BOTH recipient sources (s40: frontmatter is one of them).
+	if errOut != "error: usage: send requires --to (a flag, or a to: in the file's frontmatter)\n" {
+		t.Errorf("stderr = %q, want the two-source sentence", errOut)
 	}
 	if out != "" {
 		t.Errorf("nothing belongs on stdout: %q", out)
@@ -626,5 +628,96 @@ func TestSend_ExpandMD_UnknownModeRefused(t *testing.T) {
 	}
 	if !strings.Contains(errOut, "html") {
 		t.Errorf("the error should name the accepted value: %q", errOut)
+	}
+}
+
+// ── s40: frontmatter becomes the envelope ───────────────────────────────────
+
+func sendMD(t *testing.T, content string) string {
+	t.Helper()
+	p := t.TempDir() + "/msg.md"
+	if err := os.WriteFile(p, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+func TestSend_FrontmatterEnvelope_DryRun(t *testing.T) {
+	// --dry-run shows the RESOLVED envelope and sends NOTHING — zero round
+	// trips, which is why it can protect the invocation nobody double-checked.
+	f := newMailFake()
+	file := sendMD(t, "---\nto: grace@example.test\ncc: ops@example.test\nsubject: Project Elk kickoff\n---\n\nMonday works.\n")
+	out, errOut, code := runCmd(t, runSend, sendEnv(t, f), "send", "--file", file, "--dry-run")
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, errOut)
+	}
+	for _, want := range []string{"dry run — nothing sent", "to:      grace@example.test", "cc:      ops@example.test", "subject: Project Elk kickoff"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("dry-run missing %q in %q", want, out)
+		}
+	}
+	if len(f.calls) != 0 {
+		t.Errorf("dry run made %d call(s)", len(f.calls))
+	}
+}
+
+func TestSend_FlagBeatsFile_SaidOutLoud(t *testing.T) {
+	// Silent override sends the wrong subject; silent merge sends an
+	// unnoticed bcc. The flag wins and the conflict is NAMED on stderr.
+	f := newMailFake()
+	file := sendMD(t, "---\nto: wrong@example.test\nsubject: Old subject\n---\nbody\n")
+	out, errOut, code := runCmd(t, runSend, sendEnv(t, f), "send",
+		"--file", file, "--to", "right@example.test", "--subject", "New subject", "--dry-run")
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %q", code, errOut)
+	}
+	if !strings.Contains(out, "to:      right@example.test") || strings.Contains(out, "wrong@example.test") {
+		t.Errorf("flag did not beat file: %q", out)
+	}
+	if !strings.Contains(errOut, "note: --to beats the file's to: wrong@example.test") ||
+		!strings.Contains(errOut, "note: --subject beats the file's subject: Old subject") {
+		t.Errorf("conflicts not named: %q", errOut)
+	}
+}
+
+func TestSend_FileRecipients_RefuseWithoutConsent(t *testing.T) {
+	// The build-time decision, made: recipients that came from the FILE
+	// confirm before sending. Non-interactive stdin answers no — a .md that
+	// ARRIVED BY MAIL and got piped cannot address itself anywhere.
+	f := newMailFake()
+	file := sendMD(t, "---\nto: attacker@evil.example\nsubject: hi\n---\nbody\n")
+	_, errOut, code := runCmd(t, runSend, sendEnv(t, f), "send", "--file", file)
+	if code != 1 {
+		t.Fatalf("code = %d, want 1 (refused), stderr = %q", code, errOut)
+	}
+	if !strings.Contains(errOut, "recipients came from the FILE") || !strings.Contains(errOut, "not sent") {
+		t.Errorf("refusal not explained: %q", errOut)
+	}
+	if len(f.calls) != 0 {
+		t.Errorf("refused send made %d call(s)", len(f.calls))
+	}
+}
+
+func TestSend_UnknownKeyNamed(t *testing.T) {
+	f := newMailFake()
+	file := sendMD(t, "---\nsubjcet: oops\nto: a@b.test\nsubject: real\n---\nbody\n")
+	_, errOut, _ := runCmd(t, runSend, sendEnv(t, f), "send", "--file", file, "--dry-run")
+	if !strings.Contains(errOut, "note: frontmatter key ignored: subjcet") {
+		t.Errorf("typo not named: %q", errOut)
+	}
+}
+
+func TestSend_FromKeyGetsItsOwnSentence(t *testing.T) {
+	// Eric, reviewing #345: "I thought FROM would be implied from the
+	// principal actor logged into the CLI?" It is — and a file that tries to
+	// say otherwise deserves a sentence about identity, not a typo warning.
+	f := newMailFake()
+	file := sendMD(t, "---\nfrom: attacker@evil.example\nto: a@b.test\nsubject: hi\n---\nbody\n")
+	_, errOut, _ := runCmd(t, runSend, sendEnv(t, f), "send", "--file", file, "--dry-run")
+	if !strings.Contains(errOut, "from: comes from your CLI identity, never from the file") {
+		t.Errorf("identity sentence missing: %q", errOut)
+	}
+	if strings.Contains(errOut, "ignored: from") {
+		t.Errorf("from lumped with typos: %q", errOut)
 	}
 }
