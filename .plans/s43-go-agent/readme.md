@@ -197,8 +197,17 @@ carries several, plus watchdogs that assume they own restart duty).
 Shape, when built:
 - **`bullmoose agent install --fleet <path>`** (and `uninstall`): macOS
   launchd user agent (`~/Library/LaunchAgents`, KeepAlive), Linux systemd
-  user unit (`systemctl --user enable`). OPT-IN ONLY, one explicit verb —
-  never a side effect of `serve`, never a prompt mid-command.
+  user unit (`systemctl --user enable`). OPT-IN ONLY — and the opt-in MAY be
+  offered as a question at the natural moment (the end of a successful
+  first `serve`, or setup), in Eric's own wording (2026-08-23):
+
+      Do you want the CLI to auto-start when you login to let your
+      computer help defray cloud costs? y/n
+
+  That sentence is the standard: it names the mutation (auto-start on
+  login) AND the reason (defray cloud costs) in one breath. `n` asks never
+  again without a config flag; the mutation itself still prints the unit
+  before writing.
 - **Print the unit before writing it** (the `bullmoose local` managed-install
   consent posture: show exactly what will be installed, then ask).
 - **Refuse over an existing unit** it did not write; `uninstall` removes only
