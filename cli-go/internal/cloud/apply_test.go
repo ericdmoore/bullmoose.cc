@@ -217,6 +217,16 @@ func TestApply_FreshAccount(t *testing.T) {
 		t.Errorf("beta create must send its DO migration:\n%s", betaBody)
 	}
 
+	// workers.dev mirrors wrangler: enabled iff no routes. alpha has routes
+	// (disabled); beta has none (enabled) — beta is the provision shape,
+	// the `admin init` door that MUST be reachable.
+	if !strings.Contains(fake.bodies["POST /accounts/a1/workers/scripts/bullmoose-alpha/subdomain"], `"enabled":false`) {
+		t.Error("alpha has routes — workers.dev must be disabled")
+	}
+	if !strings.Contains(fake.bodies["POST /accounts/a1/workers/scripts/bullmoose-beta/subdomain"], `"enabled":true`) {
+		t.Error("beta has no routes — workers.dev must be enabled (the admin-plane door)")
+	}
+
 	// Secrets land where the manifest says, and nowhere else.
 	alphaSecrets := fake.bodies["PUT /accounts/a1/workers/scripts/bullmoose-alpha/secrets"]
 	if !strings.Contains(alphaSecrets, "ADMIN_TOKEN") && !strings.Contains(alphaSecrets, "SES_ACCESS_KEY_ID") {
