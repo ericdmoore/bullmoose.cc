@@ -101,6 +101,22 @@ export interface FetchVerbOptions {
   fetchImpl?: typeof fetch;
   /** T4 replaces this. */
   redact?: EgressFilter;
+  /**
+   * The already-unsealed secret to inject, INSTEAD of opening the named
+   * credential (s04 T5, `oauth_token`).
+   *
+   * The OAuth verb has to spend a short-lived ACCESS token while the sealed
+   * value is the long-lived REFRESH token — so it cannot let this function
+   * unseal, and it must not grow a second proxy implementation either
+   * (invariant 4's redirect discipline, the allowlist re-check per hop and
+   * the single exit all live here and must have exactly one home). This is
+   * the narrow seam that lets the one runtime serve both: everything else —
+   * destination, allowlist, recipe, redaction — is unchanged.
+   *
+   * Bureau-internal by construction: `handle()` never reads it from a
+   * request body, so no caller can supply a secret of their own.
+   */
+  secretOverride?: string;
 }
 
 export async function runFetchVerb(
@@ -144,10 +160,12 @@ export async function runFetchVerb(
     return refuse(400, "body must be a string");
   }
 
-  // 5 — the first moment a secret exists in this process.
-  const opened = await openCredential(env, cred.principalId, cred.credRef);
-  if (!opened) return refuse(404, `no credential named ${cred.credRef}`);
-  const headerValue = renderHeaderValue(recipe, opened.secret);
+  // 5 — the first moment a secret exists in this process. `secretOverride`
+  // is the OAuth verb having already done the unsealing (and the exchange);
+  // every other path opens the sealed value here.
+  const secret = options.secretOverride ?? (await openCredential(env, cred.principalId, cred.credRef))?.secret;
+  if (secret === undefined) return refuse(404, `no credential named ${cred.credRef}`);
+  const headerValue = renderHeaderValue(recipe, secret);
   if (!headerValue) {
     return refuse(403, `credential "${cred.credRef}" does not render a valid header value`);
   }
@@ -165,9 +183,9 @@ export async function runFetchVerb(
   });
   if (!sent.ok) return refuse(sent.status, sent.reason);
 
-  // 7 — the single exit. `opened.secret` is handed to the seam, not to the
+  // 7 — the single exit. The secret is handed to the seam, not to the
   // caller: T4 needs to know what to scrub, and this is where it will.
-  return renderResult(sent.response, [opened.secret], sent.hops, redact);
+  return renderResult(sent.response, [secret], sent.hops, redact);
 }
 
 interface SendPlan {
