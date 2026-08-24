@@ -111,7 +111,7 @@ func TestPlan_ExistingBullmooseIsResumable(t *testing.T) {
 	probe := &ProbeResult{
 		Zone:    &ZoneInfo{ID: "z", Name: "tea.example", AccountID: "a"},
 		Workers: []string{"bullmoose-alpha"},
-		D1:      []string{"bullmoose-mail-shard0"},
+		D1:      []D1Database{{Name: "bullmoose-mail-shard0", UUID: "d1-uuid-1"}},
 	}
 	p := BuildPlan(fixtureStack(t), probe, "tea.example")
 	if len(p.Refusals) != 0 {

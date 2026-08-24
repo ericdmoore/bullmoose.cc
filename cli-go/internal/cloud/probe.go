@@ -61,17 +61,48 @@ type ZoneInfo struct {
 	AccountID string
 }
 
-// ProbeResult is everything the plan may know about the account. Every
-// list is NAMES — ids are apply's business.
+// D1Database / KVNamespace carry the id alongside the name: the PLAN keys
+// on names only, but apply must bind EXISTING resources by the id the
+// account actually assigned (never the built account's ids in the shipped
+// configs), and re-listing mid-apply would race the probe it just showed
+// the user.
+type D1Database struct {
+	Name string `json:"name"`
+	UUID string `json:"uuid"`
+}
+
+type KVNamespace struct {
+	Title string `json:"title"`
+	ID    string `json:"id"`
+}
+
+// ProbeResult is everything the plan may know about the account.
 type ProbeResult struct {
 	Zone    *ZoneInfo // nil: the token sees no such zone
 	Workers []string
-	D1      []string
+	D1      []D1Database
 	R2      []string
-	KV      []string
+	KV      []KVNamespace
 	Pages   []string
 	DNS     []DNSRecord
 	Denied  []Denial
+}
+
+// D1Names / KVTitles are the name views the plan compares against.
+func (p *ProbeResult) D1Names() []string {
+	out := make([]string, len(p.D1))
+	for i, d := range p.D1 {
+		out[i] = d.Name
+	}
+	return out
+}
+
+func (p *ProbeResult) KVTitles() []string {
+	out := make([]string, len(p.KV))
+	for i, k := range p.KV {
+		out[i] = k.Title
+	}
+	return out
 }
 
 type cfEnvelope struct {
@@ -167,11 +198,11 @@ func Probe(c *CF, zone string) (*ProbeResult, error) {
 		{"/accounts/" + acct + "/workers/scripts", "Workers scripts", "Account > Workers Scripts > Edit",
 			collectNames("id", &res.Workers)},
 		{"/accounts/" + acct + "/d1/database", "D1 databases", "Account > D1 > Edit",
-			collectNames("name", &res.D1)},
+			func(raw json.RawMessage) error { return json.Unmarshal(raw, &res.D1) }},
 		{"/accounts/" + acct + "/r2/buckets", "R2 buckets", "Account > Workers R2 Storage > Edit",
 			collectR2(&res.R2)},
 		{"/accounts/" + acct + "/storage/kv/namespaces", "KV namespaces", "Account > Workers KV Storage > Edit",
-			collectNames("title", &res.KV)},
+			func(raw json.RawMessage) error { return json.Unmarshal(raw, &res.KV) }},
 		{"/accounts/" + acct + "/pages/projects", "Pages projects", "Account > Cloudflare Pages > Edit",
 			collectNames("name", &res.Pages)},
 		{"/zones/" + res.Zone.ID + "/dns_records", "DNS records", "Zone > DNS > Edit",

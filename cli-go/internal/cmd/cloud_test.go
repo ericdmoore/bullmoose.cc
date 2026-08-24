@@ -30,22 +30,28 @@ func runCloudCmd(t *testing.T, argv ...string) (out, errOut string, code int) {
 }
 
 // stackFake publishes a two-worker stack the way release-stack.yml would:
-// manifest + configs, checksums true. Returns its base URL.
+// manifest + configs + bundles + schema + migrations, checksums true.
+// Returns its base URL.
 func stackFake(t *testing.T) string {
 	t.Helper()
-	configs := map[string]string{
-		"alpha": `{
+	blobs := map[string]string{
+		"workers/alpha/wrangler.jsonc": `{
 			"name": "bullmoose-alpha",
 			"routes": [{"pattern": "app.bullmoose.cc/api/*", "zone_name": "bullmoose.cc"}],
 			"d1_databases": [{"binding": "DB", "database_name": "bullmoose-mail-shard0"}],
 			"r2_buckets": [{"binding": "BLOBS", "bucket_name": "bullmoose-mail-blobs"}]
 		}`,
-		"beta": `{"name": "bullmoose-beta", "services": [{"binding": "ALPHA", "service": "bullmoose-alpha"}]}`,
+		"workers/beta/wrangler.jsonc": `{"name": "bullmoose-beta", "services": [{"binding": "ALPHA", "service": "bullmoose-alpha"}]}`,
+		"workers/alpha/index.js":      `export default {}`,
+		"workers/beta/index.js":       `export default {}`,
+		"schema/control-plane.sql":    "CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY);",
+		"schema/data-plane.sql":       "CREATE TABLE IF NOT EXISTS emails (id TEXT PRIMARY KEY);",
+		"migrations.json":             `[]`,
 	}
 	files := map[string]string{}
-	for name, src := range configs {
+	for path, src := range blobs {
 		sum := sha256.Sum256([]byte(src))
-		files["workers/"+name+"/wrangler.jsonc"] = hex.EncodeToString(sum[:])
+		files[path] = hex.EncodeToString(sum[:])
 	}
 	manifest := map[string]any{
 		"manifestVersion": 1, "version": "v9.9.9",
@@ -57,8 +63,11 @@ func stackFake(t *testing.T) string {
 		"schema":     []string{"schema/control-plane.sql", "schema/data-plane.sql"},
 		"migrations": map[string]any{"file": "migrations.json", "count": 7},
 		"secrets": map[string]any{
-			"generated": map[string]any{"VAULT_MASTER_KEY": map[string]any{"bytes": 32, "workers": []string{"beta"}}},
-			"external":  map[string]any{"SES_ACCESS_KEY_ID": map[string]any{"workers": []string{"alpha"}, "required": true, "note": "IAM: ses:SendRawEmail"}},
+			"generated": map[string]any{
+				"VAULT_MASTER_KEY": map[string]any{"bytes": 32, "workers": []string{"beta"}},
+				"ADMIN_TOKEN":      map[string]any{"bytes": 24, "workers": []string{"alpha"}},
+			},
+			"external": map[string]any{"SES_ACCESS_KEY_ID": map[string]any{"workers": []string{"alpha"}, "required": true, "note": "IAM: ses:SendRawEmail"}},
 		},
 		"webmail": "webmail.tar.gz",
 		"files":   files,
@@ -68,9 +77,9 @@ func stackFake(t *testing.T) string {
 	mux.HandleFunc("/v9.9.9/manifest.json", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(manifest)
 	})
-	for name, src := range configs {
+	for path, src := range blobs {
 		body := src
-		mux.HandleFunc("/v9.9.9/workers/"+name+"/wrangler.jsonc", func(w http.ResponseWriter, _ *http.Request) {
+		mux.HandleFunc("/v9.9.9/"+path, func(w http.ResponseWriter, _ *http.Request) {
 			fmt.Fprint(w, body)
 		})
 	}
@@ -85,6 +94,10 @@ type cfState struct {
 	workers, d1, r2, kv, pages []string
 	dns                        []map[string]string
 	denied403                  map[string]bool // by path suffix
+	// allowWrites: install tests only. When false (every plan test), ANY
+	// non-GET is a test failure — read-only is asserted, not assumed.
+	allowWrites bool
+	writes      []string
 }
 
 func cfFake(t *testing.T, state *cfState) string {
@@ -102,8 +115,22 @@ func cfFake(t *testing.T, state *cfState) string {
 	}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
-			t.Errorf("plan sent a %s to %s — plan is read-only", r.Method, r.URL.Path)
-			http.NotFound(w, r)
+			if !state.allowWrites {
+				t.Errorf("plan sent a %s to %s — plan is read-only", r.Method, r.URL.Path)
+				http.NotFound(w, r)
+				return
+			}
+			state.writes = append(state.writes, r.Method+" "+r.URL.Path)
+			switch {
+			case strings.HasSuffix(r.URL.Path, "/storage/kv/namespaces"):
+				w.Write(env(map[string]string{"id": "kv-1", "title": "ROUTES"}))
+			case strings.HasSuffix(r.URL.Path, "/d1/database"):
+				w.Write(env(map[string]string{"name": "bullmoose-mail-shard0", "uuid": "d1-1"}))
+			case strings.HasSuffix(r.URL.Path, "/query"):
+				w.Write(env([]map[string]any{{"results": []map[string]int{{"n": 5}}}}))
+			default:
+				w.Write(env(map[string]string{}))
+			}
 			return
 		}
 		if !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
@@ -129,6 +156,10 @@ func cfFake(t *testing.T, state *cfState) string {
 			w.Write(env([]map[string]any{{"id": "z1", "name": "tea.example", "account": map[string]string{"id": "a1"}}}))
 		case strings.HasSuffix(r.URL.Path, "/workers/scripts"):
 			w.Write(env(named("id", state.workers)))
+		case strings.Contains(r.URL.Path, "/workers/scripts/"): // install's verify read-back
+			w.Write(env(map[string]string{}))
+		case strings.HasSuffix(r.URL.Path, "/workers/routes"): // install's route pre-listing
+			w.Write(env([]any{}))
 		case strings.HasSuffix(r.URL.Path, "/d1/database"):
 			w.Write(env(named("name", state.d1)))
 		case strings.HasSuffix(r.URL.Path, "/r2/buckets"):
@@ -269,6 +300,68 @@ func TestCloudPlan_ChecksumMismatchDies(t *testing.T) {
 	}
 }
 
+func TestCloudInstall_DeclineAppliesNothing(t *testing.T) {
+	// The fake REFUSES non-GETs unless allowWrites — so this test failing
+	// silent is impossible: any mutation after a declined prompt is caught
+	// by the fake itself, not by an assertion someone could weaken.
+	stack, cf := stackFake(t), cfFake(t, &cfState{})
+	cloudEnv(t, stack, cf)
+	withStdin(t, "no\n")
+	out, errOut, code := runCloudCmd(t, "install", "--zone", "tea.example", "--stack-base", stack)
+	if code != 1 {
+		t.Fatalf("declined install must exit 1, got %d", code)
+	}
+	if !strings.Contains(errOut, "declined — nothing was applied") {
+		t.Errorf("decline chrome: %s", errOut)
+	}
+	if !strings.Contains(out, "plan: stack v9.9.9 onto tea.example") {
+		t.Errorf("the plan must render BEFORE the prompt:\n%s", out)
+	}
+}
+
+func TestCloudInstall_RefusalGatesBeforeThePrompt(t *testing.T) {
+	// No stdin is wired here: if install ever ASKS in this scenario the
+	// read fails and the test breaks — a question whose yes cannot be
+	// honoured must never be asked.
+	stack, cf := stackFake(t), cfFake(t, &cfState{
+		dns: []map[string]string{{"name": "app.tea.example", "type": "A", "content": "203.0.113.7"}},
+	})
+	cloudEnv(t, stack, cf)
+	_, errOut, code := runCloudCmd(t, "install", "--zone", "tea.example", "--stack-base", stack)
+	if code != 1 || !strings.Contains(errOut, "not applyable as printed") {
+		t.Fatalf("code=%d err=%s", code, errOut)
+	}
+}
+
+func TestCloudInstall_YesAppliesAndHandsOff(t *testing.T) {
+	state := &cfState{allowWrites: true}
+	stack, cf := stackFake(t), cfFake(t, state)
+	cloudEnv(t, stack, cf)
+	t.Setenv("SES_ACCESS_KEY_ID", "AKIATEST")
+	out, errOut, code := runCloudCmd(t, "install", "--zone", "tea.example", "--stack-base", stack, "--yes")
+	if code != 0 {
+		t.Fatalf("code=%d\nstderr: %s", code, errOut)
+	}
+	if len(state.writes) == 0 {
+		t.Fatal("--yes applied nothing")
+	}
+	if !strings.Contains(out, "core stack applied to tea.example") {
+		t.Errorf("receipt missing:\n%s", out)
+	}
+	// The hand-off: ADMIN_TOKEN printed ONCE (48 hex chars for 24 bytes),
+	// and the not-yet-wired truth stated rather than implied.
+	if !strings.Contains(out, "ADMIN_TOKEN") || !strings.Contains(out, "save it now") {
+		t.Errorf("no ADMIN_TOKEN hand-off:\n%s", out)
+	}
+	if !strings.Contains(out, "not yet wired (by design): the mail path") {
+		t.Errorf("the T4 honesty line is missing:\n%s", out)
+	}
+	// External secret came from the environment, never argv.
+	if !strings.Contains(errOut, "secret SES_ACCESS_KEY_ID installed") {
+		t.Errorf("SES secret did not ride from env:\n%s", errOut)
+	}
+}
+
 func TestCloudPlan_Usage(t *testing.T) {
 	t.Setenv("CLOUDFLARE_API_TOKEN", "x")
 	if _, errOut, code := runCloudCmd(t, "plan"); code != 2 || !strings.Contains(errOut, "--zone") {
@@ -278,7 +371,7 @@ func TestCloudPlan_Usage(t *testing.T) {
 	if _, errOut, code := runCloudCmd(t, "plan", "--zone", "x.dev"); code != 2 || !strings.Contains(errOut, "CLOUDFLARE_API_TOKEN") {
 		t.Errorf("missing token: code=%d err=%s", code, errOut)
 	}
-	if _, errOut, code := runCloudCmd(t); code != 2 || !strings.Contains(errOut, "cloud plan --zone") {
+	if _, errOut, code := runCloudCmd(t); code != 2 || !strings.Contains(errOut, "cloud plan|install --zone") {
 		t.Errorf("no verb: code=%d err=%s", code, errOut)
 	}
 	if _, errOut, code := runCloudCmd(t, "teleport"); code != 2 || !strings.Contains(errOut, "teleport") {

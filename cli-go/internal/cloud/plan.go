@@ -163,7 +163,7 @@ func BuildPlan(st *Stack, probe *ProbeResult, zone string) *Plan {
 
 	for _, name := range sortedKeys(d1Names) {
 		detail := fmt.Sprintf("apply %s, then %d migrations", strings.Join(st.Manifest.Schema, " + "), st.Manifest.Migrations.Count)
-		add(Item{Kind: "d1", Name: name, Action: presence("D1 databases", probe.D1, name), Detail: detail})
+		add(Item{Kind: "d1", Name: name, Action: presence("D1 databases", probe.D1Names(), name), Detail: detail})
 	}
 	for _, name := range sortedKeys(r2Names) {
 		add(Item{Kind: "r2", Name: name, Action: presence("R2 buckets", probe.R2, name)})
@@ -171,7 +171,7 @@ func BuildPlan(st *Stack, probe *ProbeResult, zone string) *Plan {
 	for _, binding := range sortedKeys(kvBindings) {
 		// KV namespaces are found by TITLE; the shipped id is the built
 		// account's and does not travel (see jsonc.go).
-		add(Item{Kind: "kv", Name: binding, Action: presence("KV namespaces", probe.KV, binding),
+		add(Item{Kind: "kv", Name: binding, Action: presence("KV namespaces", probe.KVTitles(), binding),
 			Detail: "id assigned at apply"})
 	}
 
