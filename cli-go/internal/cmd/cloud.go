@@ -31,6 +31,7 @@ import (
 
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/cloud"
 	bmio "github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
+	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/store"
 )
 
 type cloudArgs struct {
@@ -253,10 +254,37 @@ func runCloudInstall(s *bmio.Streams, a cloudArgs) int {
 	case subErr != nil || sub == "":
 		s.Out("next: this account has no workers.dev subdomain, and the admin plane (bullmoose-provision)")
 		s.Out("is reachable only there — claim one in the Cloudflare dashboard (Workers → your subdomain),")
-		s.Out("then: bullmoose admin init --url https://bullmoose-provision.<subdomain>.workers.dev --token <ADMIN_TOKEN above>")
+		s.Out("then: bullmoose admin init --token <ADMIN_TOKEN above>   # --url is derived once a subdomain exists")
 	default:
-		s.Out("next — connect the admin plane, then let the stack wire its own mail path:")
-		s.Out("  bullmoose admin init --url https://bullmoose-provision." + sub + ".workers.dev --token <ADMIN_TOKEN above>")
+		// (1) OFFER to connect this device. The installer holds both halves
+		// already — it DERIVED the url and MINTED the token — so asking the
+		// operator to copy a freshly made secret out of scrollback buys
+		// nothing and risks a paste buffer. What you minted, you can write
+		// down; the hand-off boundary is respected because persisting your
+		// own output is not doing the product's job.
+		//
+		// An OFFER, never a side effect: the machine that installs is
+		// usually the machine that operates, but "usually" is not "always",
+		// and a config written without asking is one nobody knows is there.
+		adminURL := "https://" + provisionWorker + "." + sub + ".workers.dev"
+		token, minted := applied.Minted["ADMIN_TOKEN"]
+		connected := false
+		if minted && token != "" {
+			if defaultConfirm(s, a.Yes)("connect this device to the admin plane now (writes the url and token to your bullmoose config)? [Y/n] ") {
+				if err := connectAdminPlane(cloudInstallDB(), adminURL, token); err != nil {
+					s.Note("could not write the admin config (" + err.Error() + ") — run admin init by hand, below")
+				} else {
+					connected = true
+				}
+			}
+		}
+		if connected {
+			s.Out("admin plane connected: " + adminURL)
+			s.Out("next — let the stack wire its own mail path (nothing to copy):")
+		} else {
+			s.Out("next — connect the admin plane, then let the stack wire its own mail path:")
+			s.Out("  bullmoose admin init --token <ADMIN_TOKEN above>   # --url is derived")
+		}
 	}
 	s.Out("  bullmoose admin tenant add <name>")
 	s.Out("  bullmoose admin domain add " + a.Zone + " --tenant <tenantId>   # MX + Email Routing + catch-all→ingest + SES DKIM/DMARC")
@@ -408,3 +436,9 @@ func renderPlan(s *bmio.Streams, p *cloud.Plan) {
 	s.Out("legend: + create   = reuse (already yours; apply reconciles)   ⚿ mint locally   → you supply")
 	s.Out("read-only: nothing above has happened. `cloud install` (T3) is this plan plus one yes.")
 }
+
+// cloudInstallDB is the device mirror `cloud install` may write the admin
+// pair into. `cloud` owns no --db flag, so this is the ordinary resolution
+// ($BULLMOOSE_DB, else ~/.bullmoose/mail.db) named in one place — which is
+// also what lets a test point it somewhere harmless.
+func cloudInstallDB() string { return store.DBPath("") }
