@@ -184,3 +184,28 @@ outlives the repo copy only as long as Eric wants a museum piece.
 - [[s10-agents]] — the two-surface framing (configuration vs activity) the
   dossier verbs inherit
 - sVOL 007/008 — invoke and the kill switch
+
+## Follow-on (Eric, 2026-08-23): `agent install` — the daemon offers to survive a reboot, opt-in
+
+The daemon is a foreground process; nothing installs it anywhere, and that
+is currently correct — a CLI that silently writes launchd plists is
+malware-shaped. But Eric's instinct names the real gap: a homelab runtime
+that dies with the terminal is a free lane that quietly stops existing, and
+the operator's alternative today is hand-rolling plists (alpaca already
+carries several, plus watchdogs that assume they own restart duty).
+
+Shape, when built:
+- **`bullmoose agent install --fleet <path>`** (and `uninstall`): macOS
+  launchd user agent (`~/Library/LaunchAgents`, KeepAlive), Linux systemd
+  user unit (`systemctl --user enable`). OPT-IN ONLY, one explicit verb —
+  never a side effect of `serve`, never a prompt mid-command.
+- **Print the unit before writing it** (the `bullmoose local` managed-install
+  consent posture: show exactly what will be installed, then ask).
+- **Refuse over an existing unit** it did not write; `uninstall` removes only
+  what `install` created.
+- Graceful shutdown (the port's one divergence) is what makes KeepAlive
+  honest: a restart cycle completes the in-flight claim instead of
+  stranding it.
+- Coexistence note for boxes like alpaca: hand-rolled watchdogs that
+  restart things on their own schedule must not fight the unit manager —
+  the doc the verb prints should say whose KeepAlive wins.
