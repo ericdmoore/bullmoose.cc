@@ -36,6 +36,7 @@ import type { JmapClient } from "../lib/jmap/JmapClient";
 import type { Session } from "../lib/jmap/types";
 import CollectionColumn from "./CollectionColumn";
 import { publishGroups } from "../lib/shell/publishGroups";
+import { copyText, mintFileLink } from "../lib/files/share";
 import type { CollectionGroup } from "../lib/shell/collections";
 import { hrefWithParams, urlParam } from "../lib/shell/publish";
 import { isUnmodifiedPrimaryClick, syncDetailUrl } from "../lib/ui/navigation";
@@ -403,6 +404,27 @@ export default function FilesApp({ client: injected, search }: Props) {
   }, [uploads, runUploads]);
 
   // ── rename / move / delete ──────────────────────────────────────────────
+  // #339 — mint, copy, and SAY WHICH happened. A "Copied" that is really
+  // "minted but the clipboard refused" (no secure context, no gesture) sends
+  // someone to paste whatever was there before.
+  const [shareNote, setShareNote] = useState("");
+  const copyLink = useCallback(async () => {
+    if (!client || !accountId || !selected) return;
+    setShareNote("");
+    const out = await mintFileLink(client, accountId, {
+      name: selected.name,
+      type: selected.type,
+      blobId: selected.blobId,
+    });
+    if ("refusal" in out) {
+      setShareNote(out.refusal.message);
+      return;
+    }
+    const copied = await copyText(out.link.url);
+    const until = new Date(out.link.expiresAt).toLocaleString();
+    setShareNote(copied ? `Link copied — expires ${until}.` : `Link minted (copy failed): ${out.link.url}`);
+  }, [client, accountId, selected]);
+
   const submitRename = useCallback(async () => {
     if (!client || !accountId || !selected) return;
     setBusy(true);
@@ -871,10 +893,20 @@ export default function FilesApp({ client: injected, search }: Props) {
               ) : null}
 
               {selected.nodeType === "file" && selected.blobId ? (
-                <div class="mt-4">
+                <div class="mt-4 flex flex-wrap items-center gap-2">
                   <Button disabled={busy} onClick={() => void download()}>
                     Download
                   </Button>
+                  {/* #339 — the API has minted expiring public links since
+                      s03.B; this was the surface with no way to reach it. */}
+                  <Button disabled={busy} onClick={() => void copyLink()}>
+                    Copy link
+                  </Button>
+                  {shareNote ? (
+                    <span class="text-sm text-gray-500 dark:text-gray-400" data-testid="share-note">
+                      {shareNote}
+                    </span>
+                  ) : null}
                 </div>
               ) : null}
 

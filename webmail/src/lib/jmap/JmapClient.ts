@@ -92,6 +92,14 @@ export interface JmapClient {
    */
   upload(accountId: Id, body: Blob | Uint8Array, type: string): Promise<UploadResult>;
   download(accountId: Id, blobId: string, opts?: { name?: string; type?: string }): Promise<Uint8Array>;
+  /** Mint an expiring public link for a stored blob (#339). Returns the raw
+   *  Response so the caller can tell 501 ("sharing not configured on this
+   *  server") from a transient failure — they need different sentences. */
+  mintShare(
+    accountId: Id,
+    blobId: string,
+    body: { name: string; type?: string; ttlSeconds?: number },
+  ): Promise<Response>;
   watch(onChange: (changed: Record<Id, Record<string, string>>) => void, opts?: WatchOptions): Promise<() => void>;
 }
 
@@ -302,6 +310,27 @@ export class FetchJmapClient implements JmapClient {
       throw new JmapRequestError(`blob download failed: HTTP ${res.status}`, undefined, res.status);
     }
     return new Uint8Array(await res.arrayBuffer());
+  }
+
+  /**
+   * Mint an expiring public link for an already-uploaded blob (#339).
+   *
+   * A method on the client rather than a free function because the auth
+   * headers and the fetch wrapper are private — every other caller of a
+   * non-JMAP `/api/*` route (`upload`) is a method for exactly that reason,
+   * and reaching around it would mean a second place that knows how this
+   * app authenticates.
+   */
+  async mintShare(
+    accountId: Id,
+    blobId: string,
+    body: { name: string; type?: string; ttlSeconds?: number },
+  ): Promise<Response> {
+    return this.doFetch(`${this.baseUrl}/api/share/${encodeURIComponent(accountId)}/${encodeURIComponent(blobId)}`, {
+      method: "POST",
+      headers: this.authHeaders({ "content-type": "application/json" }),
+      body: JSON.stringify(body),
+    });
   }
 
   private uploadUrlFor(session: Session, accountId: Id): string {
