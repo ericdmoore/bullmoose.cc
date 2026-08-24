@@ -108,6 +108,17 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
+      # webhost LAST: it binds only its own R2 bucket, so nothing waits on
+      # it — and it serves app.bullmoose.cc/* UNDERNEATH jmap's more
+      # specific routes on that hostname. Deploying it before jmap would
+      # open a window where /api/* fell through to the SPA fallback and the
+      # app answered its own API calls with HTML.
+      - name: Deploy webhost
+        run: npx wrangler deploy -c services/webhost/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       # NOT deployed here: services/demo-keys. It is absent from
       # infra/bootstrap.mjs DEPLOY_ORDER and docs/DEPLOY.md §2 as well —
       # tracked separately as .feedback/fromClaude/infra/013, since wiring it

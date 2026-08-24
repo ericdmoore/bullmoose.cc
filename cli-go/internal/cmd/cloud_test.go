@@ -9,6 +9,9 @@ package cmd
 // `cloud` refusing --db is a feature under test, not an obstacle.
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -32,6 +35,19 @@ func runCloudCmd(t *testing.T, argv ...string) (out, errOut string, code int) {
 // stackFake publishes a two-worker stack the way release-stack.yml would:
 // manifest + configs + bundles + schema + migrations, checksums true.
 // Returns its base URL.
+// A real gzipped tar — the upload path parses it rather than a stub.
+func tinySiteTar() string {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	body := "<!doctype html><title>bm</title>"
+	_ = tw.WriteHeader(&tar.Header{Name: "index.html", Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg})
+	_, _ = tw.Write([]byte(body))
+	_ = tw.Close()
+	_ = gz.Close()
+	return buf.String()
+}
+
 func stackFake(t *testing.T) string {
 	t.Helper()
 	blobs := map[string]string{
@@ -46,6 +62,7 @@ func stackFake(t *testing.T) string {
 		"workers/beta/index.js":       `export default {}`,
 		"schema/control-plane.sql":    "CREATE TABLE IF NOT EXISTS accounts (id TEXT PRIMARY KEY);",
 		"schema/data-plane.sql":       "CREATE TABLE IF NOT EXISTS emails (id TEXT PRIMARY KEY);",
+		"webmail.tar.gz":              tinySiteTar(),
 		"migrations.json":             `[]`,
 	}
 	files := map[string]string{}
@@ -126,6 +143,8 @@ func cfFake(t *testing.T, state *cfState) string {
 				w.Write(env(map[string]string{"id": "kv-1", "title": "ROUTES"}))
 			case strings.HasSuffix(r.URL.Path, "/d1/database"):
 				w.Write(env(map[string]string{"name": "bullmoose-mail-shard0", "uuid": "d1-1"}))
+			case strings.Contains(r.URL.Path, "/r2/buckets/") && strings.Contains(r.URL.Path, "/objects/"):
+				w.WriteHeader(200) // R2 object PUT: a bare 200, not an envelope
 			case strings.HasSuffix(r.URL.Path, "/query"):
 				w.Write(env([]map[string]any{{"results": []map[string]int{{"n": 5}}}}))
 			default:
@@ -368,8 +387,13 @@ func TestCloudInstall_YesAppliesAndHandsOff(t *testing.T) {
 	}
 	// The webmail one-liner: the published tarball for THIS version, and
 	// the one remaining npx step said out loud.
-	if !strings.Contains(out, "/v9.9.9/webmail.tar.gz") || !strings.Contains(out, "pages deploy") {
-		t.Errorf("the webmail deploy command must ride the receipt:\n%s", out)
+	// No build step to hand over any more: the webmail is already live, and
+	// the receipt says so without ever naming a JS toolchain.
+	if !strings.Contains(out, "already live at https://app.tea.example") {
+		t.Errorf("the receipt must say the webmail is up:\n%s", out)
+	}
+	if strings.Contains(out, "npx") || strings.Contains(out, "wrangler") {
+		t.Errorf("the install must never name a JS toolchain:\n%s", out)
 	}
 	// External secret came from the environment, never argv.
 	if !strings.Contains(errOut, "secret SES_ACCESS_KEY_ID installed") {

@@ -83,9 +83,13 @@ type ProbeResult struct {
 	D1      []D1Database
 	R2      []string
 	KV      []KVNamespace
-	Pages   []string
-	DNS     []DNSRecord
-	Denied  []Denial
+	// Pages is READ but no longer required: the webmail moved to R2 behind
+	// services/webhost, so `Cloudflare Pages: Edit` left the token recipe.
+	// The field stays so an install that still HAS a Pages project can say
+	// so rather than pretending the account is empty.
+	Pages  []string
+	DNS    []DNSRecord
+	Denied []Denial
 }
 
 // D1Names / KVTitles are the name views the plan compares against.
@@ -203,8 +207,6 @@ func Probe(c *CF, zone string) (*ProbeResult, error) {
 			collectR2(&res.R2)},
 		{"/accounts/" + acct + "/storage/kv/namespaces", "KV namespaces", "Account > Workers KV Storage > Edit",
 			func(raw json.RawMessage) error { return json.Unmarshal(raw, &res.KV) }},
-		{"/accounts/" + acct + "/pages/projects", "Pages projects", "Account > Cloudflare Pages > Edit",
-			collectNames("name", &res.Pages)},
 		{"/zones/" + res.Zone.ID + "/dns_records", "DNS records", "Zone > DNS > Edit",
 			collectDNS(&res.DNS)},
 	}

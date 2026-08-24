@@ -79,7 +79,21 @@ const SCHEMAS = ["packages/mailstore/sql/data-plane.sql", "packages/mailstore/sq
 // `oauth` precedes `agent`, which binds OAUTH to validate access tokens —
 // the same edge, and the same failure if reversed (deploying against a
 // service that does not exist yet), as bureau-before-agent.
-export const DEPLOY_ORDER = ["submit", "bureau", "jmap", "oauth", "agent", "ingest", "provision", "anglebrackets"];
+export const DEPLOY_ORDER = [
+  "submit",
+  "bureau",
+  "jmap",
+  "oauth",
+  "agent",
+  "ingest",
+  "provision",
+  "anglebrackets",
+  // webhost LAST: it binds only its own R2 bucket, so nothing waits on it —
+  // and it serves app.<zone>/* underneath jmap's more specific routes, which
+  // must already exist or a deploy window would serve the SPA fallback to
+  // /api/* calls.
+  "webhost",
+];
 
 const cfg = (w) => `services/${w}/wrangler.jsonc`;
 // Configs that carry resource ids to wire. anglebrackets has no KV binding —

@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bullmoose-webhost",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+
+  // app.<zone>/* is DELIBERATELY the least specific route on this hostname.
+  // services/jmap owns /api/*, /auth/*, /console/*, /share/* and
+  // /.well-known/jmap here; Cloudflare matches most-specific-first, so those
+  // keep winning and this serves everything else. Same origin, no CORS
+  // surface — the s07 arrangement, unchanged by moving off Pages.
+  "routes": [{ "pattern": "app.bullmoose.cc/*", "zone_name": "bullmoose.cc" }],
+
+  // One bucket, one deployment's files. Separate from bullmoose-mail-blobs
+  // on purpose: different lifecycle (replaced wholesale per release vs
+  // retained forever), different content (public assets vs private mail),
+  // and a public-serving worker must not hold a binding that can read mail.
+  "r2_buckets": [{ "binding": "SITE", "bucket_name": "bullmoose-webmail" }],
+
+  "observability": { "enabled": true }
+}

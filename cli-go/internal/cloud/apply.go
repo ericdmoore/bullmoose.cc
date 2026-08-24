@@ -33,7 +33,6 @@ import (
 	"net/http"
 	"net/textproto"
 	"sort"
-	"strings"
 )
 
 // mintSecret generates one secret exactly the way infra/bootstrap.mjs
@@ -298,37 +297,23 @@ func ApplyCore(cf *CF, st *Stack, probe *ProbeResult, plan *Plan, opts ApplyOpts
 		}
 	}
 
-	// ---- the webmail app's home: Pages project + its hostname ----
-	// The DEPLOYMENT (asset upload) is deliberately NOT here: Pages direct
-	// upload is wrangler's own file-hash protocol, and a reimplementation
-	// would be a drifting copy (the mail-path rule again). The receipt hands
-	// the operator the one wrangler command; this makes that command work
-	// with zero setup — project existing, hostname attached and its DNS
-	// record provisioned (the attach is what CREATES app.<zone>, per
-	// deploy-app.yml's derivation).
+	// ---- the webmail: R2 objects behind services/webhost ----
+	// Pages is GONE from the stack (and with it its DNS attach and its
+	// `Cloudflare Pages: Edit` token scope). The app's files are objects in
+	// a bucket the same loop above created, served by a worker the same
+	// loop above uploaded — so the last step that needed `npx` is now the
+	// same documented API surface as everything else.
 	for _, it := range plan.Items {
-		if it.Kind != "pages" {
+		if it.Kind != "webmail" {
 			continue
 		}
-		if it.Action == Create {
-			if err := cf.postJSON("/accounts/"+acct+"/pages/projects",
-				map[string]any{"name": it.Name, "production_branch": "main"}, &json.RawMessage{}); err != nil {
-				return applied, fmt.Errorf("create pages project %s: %w", it.Name, err)
-			}
-			step("pages project %s created", it.Name)
-		} else {
-			step("pages project %s reused", it.Name)
+		targz, err := st.FetchVerified(st.Manifest.Webmail)
+		if err != nil {
+			return applied, err
 		}
-		host := "app." + opts.Zone
-		if err := cf.postJSON("/accounts/"+acct+"/pages/projects/"+it.Name+"/domains",
-			map[string]string{"name": host}, &json.RawMessage{}); err != nil {
-			// An already-attached domain answers 409 — the state we wanted.
-			if !strings.Contains(err.Error(), "409") {
-				return applied, fmt.Errorf("pages domain %s: %w", host, err)
-			}
-			step("pages domain %s already attached", host)
-		} else {
-			step("pages domain %s attached (DNS record provisioned)", host)
+		n, err := uploadWebmail(cf, acct, it.Name, targz, func(line string) { step("%s", line) })
+		if err != nil {
+			return applied, fmt.Errorf("webmail upload stopped after %d file(s): %w", n, err)
 		}
 	}
 

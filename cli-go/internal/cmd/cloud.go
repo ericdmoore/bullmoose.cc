@@ -251,19 +251,9 @@ func runCloudInstall(s *bmio.Streams, a cloudArgs) int {
 	s.Out("  bullmoose admin domain add " + a.Zone + " --tenant <tenantId>   # MX + Email Routing + catch-all→ingest + SES DKIM/DMARC")
 	s.Out("  bullmoose cloud doctor --zone " + a.Zone + "                    # read-only: did the mail path land?")
 
-	// The webmail deployment is the ONE step that still runs through npx:
-	// Pages direct upload is wrangler's own file-hash protocol, and a Go
-	// reimplementation would be a drifting copy (the same reason the mail
-	// path is the stack's). The project and app.<zone> hostname were just
-	// applied above, so this single command is all that remains.
-	base := a.StackBase
-	if base == "" {
-		base = cloud.DefaultStackBase
-	}
 	s.Out("")
-	s.Out("webmail — app." + a.Zone + " serves after this one command (the tarball is checksummed in the manifest):")
-	s.Out("  d=$(mktemp -d) && curl -fsSL " + base + "/" + st.Manifest.Version + "/webmail.tar.gz | tar -xz -C \"$d\" && \\")
-	s.Out("    npx --yes wrangler@4 pages deploy \"$d\" --project-name bullmoose-app")
+	s.Out("The webmail is already live at https://app." + a.Zone + " — its files were uploaded to R2")
+	s.Out("and are served by bullmoose-webhost. There is no build step and nothing else to run.")
 	return 0
 }
 

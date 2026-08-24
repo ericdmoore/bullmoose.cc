@@ -44,7 +44,7 @@ const (
 
 // Item is one planned resource.
 type Item struct {
-	Kind   string `json:"kind"` // worker | d1 | r2 | kv | pages | dns | secret
+	Kind   string `json:"kind"` // worker | d1 | r2 | kv | webmail | dns | secret
 	Name   string `json:"name"`
 	Action Action `json:"action"`
 	Detail string `json:"detail,omitempty"`
@@ -175,10 +175,14 @@ func BuildPlan(st *Stack, probe *ProbeResult, zone string) *Plan {
 			Detail: "id assigned at apply"})
 	}
 
-	// The webmail app — a Pages project plus the app hostname.
-	add(Item{Kind: "pages", Name: "bullmoose-app", Action: presence("Pages projects", probe.Pages, "bullmoose-app"),
-		Detail: "upload " + st.Manifest.Webmail + "; custom domain app." + zone})
-	dnsWanted["app."+zone] = "custom domain of bullmoose-app (Pages)"
+	// The webmail — objects in a bucket, served by the webhost worker whose
+	// route the loop above already planned. No Pages project: that meant a
+	// second upload protocol (and a second token scope) for one static site.
+	const siteBucket = "bullmoose-webmail"
+	add(Item{Kind: "webmail", Name: siteBucket, Action: presence("R2 buckets", probe.R2, siteBucket),
+		Detail: "upload " + st.Manifest.Webmail + " to r2://" + siteBucket + ", served by bullmoose-webhost"})
+	// The bucket itself is created by the r2 pass above only if a worker
+	// binds it; webhost does, so it is already in r2Names.
 
 	// DNS — the one class where `exists` can mean REFUSE: a name that
 	// already resolves to something not ours is someone's live thing. But a
