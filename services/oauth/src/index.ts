@@ -5,6 +5,7 @@ import { consentPage, DERIVE_LEGACY_PATH, DERIVE_PATH, deriveScript, errorPage }
 import { enrollOptions, enrollPage, enrollRegister, enrollScript } from "./enroll.js";
 import { assertionOptions, verifyAssertion } from "./webauthn.js";
 import { ceremonyBegin, ceremonyPage, ceremonyScript, ceremonyVerify } from "./ceremony.js";
+import { listCredentials, revokeCredential } from "./webauthnManage.js";
 import { AUTH_DOCS, docsResponse } from "./docs.js";
 import { recordConsent } from "./consentMirror.js";
 import { revoke } from "./revoke.js";
@@ -128,6 +129,14 @@ export const authorizeHandler = {
     if (url.pathname === "/ceremony.js") return ceremonyScript();
     if (url.pathname === "/ceremony/begin" && request.method === "POST") return ceremonyBegin(request, env);
     if (url.pathname === "/ceremony/verify" && request.method === "POST") return ceremonyVerify(request, env);
+    // Credential list/revoke (s33's closer): own-only, agents refused, and
+    // the last passkey of a passwordless principal stays (webauthnManage.ts).
+    if (url.pathname === "/webauthn/credentials" && request.method === "GET") {
+      return listCredentials(request, env);
+    }
+    if (url.pathname.startsWith("/webauthn/credentials/") && request.method === "DELETE") {
+      return revokeCredential(request, env, decodeURIComponent(url.pathname.slice("/webauthn/credentials/".length)));
+    }
     if (url.pathname === "/webauthn/login/options" && request.method === "POST") {
       return new Response(JSON.stringify({ publicKey: await assertionOptions(env, "login") }), {
         headers: { "content-type": "application/json" },
