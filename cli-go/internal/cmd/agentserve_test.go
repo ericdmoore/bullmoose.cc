@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	bmio "github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
+	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/sandbox"
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/store"
 	"io"
 	"net/http"
@@ -479,8 +480,10 @@ func TestDeclareMenu(t *testing.T) {
 		"emily": {Model: serveModelConfig{Provider: "openai-compatible", BaseURL: "http://127.0.0.1:1"}},
 	}}
 	declareMenu(context.Background(), dead, bmio.NewTo(&out, &errOut))
-	if len(dead.Capabilities) != 0 {
-		t.Fatalf("dead host declared: %s", dead.Capabilities)
+	// A dead host declares no MENU. (The sandbox flavor is a separate fact,
+	// declared by declareSandbox — see TestDeclareSandbox.)
+	if strings.Contains(string(dead.Capabilities), "menu") {
+		t.Fatalf("dead host declared a menu: %s", dead.Capabilities)
 	}
 }
 
@@ -535,5 +538,35 @@ func TestToolShelf_EmptyAndRefusedReadDifferently(t *testing.T) {
 	// No endpoint at all says which knob fixes it.
 	if got := toolShelf(context.Background(), &serveFleetConfig{}, "not a url", "bmi_tok"); !strings.Contains(got, "set mcpBase") {
 		t.Errorf("no endpoint: %q", got)
+	}
+}
+
+// s44 slice 5 — the sandbox flavor as a declared FACT, merged beside the
+// menu and independent of it.
+func TestDeclareSandbox(t *testing.T) {
+	var out, errOut strings.Builder
+	fleet := &serveFleetConfig{Capabilities: json.RawMessage(`{"tools":false}`)}
+	declareSandbox(fleet, bmio.NewTo(&out, &errOut))
+
+	var caps map[string]any
+	if err := json.Unmarshal(fleet.Capabilities, &caps); err != nil {
+		t.Fatal(err)
+	}
+	if caps["tools"] != false {
+		t.Fatalf("existing facets must survive the merge: %v", caps)
+	}
+	flavor, declared := caps["sandbox"]
+	if hasRuntime := sandbox.Detect().Name != ""; hasRuntime {
+		// This host can run the image: the fact is declared, and it is a
+		// FLAVOR the scheduler can route on.
+		if !declared || flavor != "oci" {
+			t.Fatalf("a host with a runtime must declare oci: %v", caps)
+		}
+		if !strings.Contains(errOut.String(), "compute can run here") {
+			t.Errorf("the operator should be told: %q", errOut.String())
+		}
+	} else if declared {
+		// A host with nothing declares NOTHING — never a floor it lacks.
+		t.Fatalf("no runtime, yet declared %v", flavor)
 	}
 }

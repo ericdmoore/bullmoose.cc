@@ -109,7 +109,10 @@ func TestAgentServe_FleetOnceDiscoversFromGrants(t *testing.T) {
 		"Hermes: serving (granted)",
 		"Allen: serving (granted)",
 		"serving 2 binding(s) [allen-analyst, hermes-responder] over 2 account(s)",
-		`capabilities {"vision":false,"contextTokens":32000,"tools":false}`,
+		// The vector is the FILE's declarations plus the host's PROVEN facts
+		// (s45's menu, s44's sandbox flavor) — so the assertion is on what the
+		// file said, which must survive the merge unchanged.
+		`"vision":false`,
 	} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("stderr missing %q\n%s", want, errOut)
@@ -170,9 +173,15 @@ func TestAgentServe_CapabilityVectorRidesTheClaim(t *testing.T) {
 			break
 		}
 	}
-	if !claim.Claimant.IsFree ||
-		string(claim.Claimant.Capabilities) != `{"vision":false,"contextTokens":32000,"tools":false}` {
-		t.Errorf("claimant = isFree %v caps %s — the vector must ride VERBATIM from the file",
+	// The file's declarations ride UNCHANGED; probed facts (the model menu,
+	// the sandbox flavor) may join them — a declaration is the file plus
+	// what the host can prove, never one silently replacing the other.
+	caps := string(claim.Claimant.Capabilities)
+	fileDeclared := strings.Contains(caps, `"vision":false`) &&
+		strings.Contains(caps, `"contextTokens":32000`) &&
+		strings.Contains(caps, `"tools":false`)
+	if !claim.Claimant.IsFree || !fileDeclared {
+		t.Errorf("claimant = isFree %v caps %s — the file's declarations must survive the merge",
 			claim.Claimant.IsFree, claim.Claimant.Capabilities)
 	}
 }

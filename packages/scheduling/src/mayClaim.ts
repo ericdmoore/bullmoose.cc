@@ -52,6 +52,9 @@ export interface ClaimCapabilities {
   /** s45: the model ids the claimant's host serves — declared facts, probed
    *  not asserted, for the allocation surface. Never read by the fit gate. */
   menu?: string[];
+  /** s44 slice 5: which compute flavor this host can execute locally
+   *  ("oci" | "wasi"). Absent = sandbox work routes to the cloud. */
+  sandbox?: "oci" | "wasi";
   vision?: boolean;
   contextTokens?: number;
   tools?: boolean;
@@ -250,7 +253,13 @@ export function normalizeClaimant(raw: unknown): ClaimantIdentity {
   const r = raw as { isFree?: unknown; capabilities?: unknown };
   let capabilities: ClaimCapabilities | null = null;
   if (typeof r.capabilities === "object" && r.capabilities !== null && !Array.isArray(r.capabilities)) {
-    const c = r.capabilities as { vision?: unknown; contextTokens?: unknown; tools?: unknown; menu?: unknown };
+    const c = r.capabilities as {
+      vision?: unknown;
+      contextTokens?: unknown;
+      tools?: unknown;
+      menu?: unknown;
+      sandbox?: unknown;
+    };
     capabilities = {};
     if (typeof c.vision === "boolean") capabilities.vision = c.vision;
     if (typeof c.tools === "boolean") capabilities.tools = c.tools;
@@ -261,6 +270,13 @@ export function normalizeClaimant(raw: unknown): ClaimantIdentity {
     // probed at serve startup, recorded trust-but-audit like isFree. FACTS
     // only, bounded (an id list, never a ranking — the plan's veto on any
     // smartness scalar applies here); the fit SQL never reads it.
+    // s44 slice 5 — the SANDBOX FLAVOR ("oci" today, "wasi" the deferred
+    // floor). A flavor, never a boolean, so a narrower executor declares
+    // which; the fit gate does not read it yet (routing on compute is its
+    // own decision), and it is recorded trust-but-audit like the rest.
+    if (typeof c.sandbox === "string" && (c.sandbox === "oci" || c.sandbox === "wasi")) {
+      capabilities.sandbox = c.sandbox;
+    }
     if (Array.isArray(c.menu)) {
       const menu = c.menu
         .filter((m): m is string => typeof m === "string" && m.length > 0)

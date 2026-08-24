@@ -57,6 +57,7 @@ import (
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/jmap"
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/jsobj"
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/mcp"
+	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/sandbox"
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/store"
 )
 
@@ -456,6 +457,12 @@ func runAgentServe(s *bmio.Streams, a agentArgs) int {
 	// fact. Failure never blocks serving: the menu is for the allocation
 	// surface, not the fit gate.
 	declareMenu(context.Background(), fleet, s)
+	// s44 slice 5 -- a SEPARATE fact from the model menu, and declared
+	// separately: whether this box can run the pinned image locally. "oci"
+	// means the free lane covers compute too; absent means sandbox work
+	// routes to the cloud and is metered there. A flavor, not a boolean, so
+	// a narrower executor can say which.
+	declareSandbox(fleet, s)
 
 	// --fleet: ONE login as a runtime principal, served accounts DISCOVERED
 	// from grants. --config: the original one-binding shape, the login's own
@@ -1036,4 +1043,34 @@ func toolShelf(ctx context.Context, fleet *serveFleetConfig, jmapBase, token str
 		return fmt.Sprintf("tools: %d — %s …", len(names), strings.Join(names[:6], ", "))
 	}
 	return fmt.Sprintf("tools: %d — %s", len(names), strings.Join(names, ", "))
+}
+
+// declareSandbox merges the detected sandbox flavor into the capabilities
+// the claim already carries. Detection only -- nothing is installed, and a
+// host with no runtime declares nothing rather than claiming a floor it
+// does not have.
+func declareSandbox(fleet *serveFleetConfig, s *bmio.Streams) {
+	flavor := sandbox.Detect().Flavor()
+	if flavor == "" {
+		return
+	}
+	// ⚠️ ADDS to a declared vector; NEVER CREATES one. "No declared vector"
+	// is itself a claim semantic -- fitsRequirements reads it as "claim
+	// exactly as today", while a declared-but-narrow vector makes booleans
+	// read "cannot". Minting a vector here to announce a sandbox would
+	// silently stop a --config host claiming vision or tools work it has
+	// always claimed: a capability declaration must never NARROW as a side
+	// effect of announcing something else.
+	if len(fleet.Capabilities) == 0 || string(fleet.Capabilities) == "null" {
+		return
+	}
+	caps := map[string]any{}
+	if err := json.Unmarshal(fleet.Capabilities, &caps); err != nil {
+		return
+	}
+	caps["sandbox"] = flavor
+	if raw, err := json.Marshal(caps); err == nil {
+		fleet.Capabilities = raw
+		s.Note("sandbox: " + flavor + " (" + sandbox.Detect().Name + ") — compute can run here")
+	}
 }
