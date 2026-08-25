@@ -190,6 +190,64 @@ accumulate quietly.
 
 ---
 
+# C · Whose budget? — attribution in a shared room (Eric, 2026-08-24)
+
+*"Attributing billing & budgets are perhaps the annoying or hard part. Users
+might author a BudgetShareProposal — where users can split the cost 50/50 or
+chip in $5 right now."*
+
+It belongs here, and the reason is sharper than "money is annoying": **the
+side channel is the first venue where work happens in a SHARED context.**
+Every invocation until now belongs to one account's binding with one budget —
+a mailbox is a room of one. A group channel asks an agent to do something
+for a ROOM, and that is what makes "whose budget" a live question.
+
+## Artifacts mostly pay for themselves
+
+B's lens design already answers attribution for artifacts: each render runs
+on the VIEWER'S OWN SESSION, so the cost lands on the viewer. `@hr` pays once
+to author; ten colleagues each pay for their own render. A second dividend
+from "lens, not gate" — no sharing mechanism required.
+
+## Chat: requester-pays, which the ceremony makes computable
+
+Today cost follows the BINDING, so whoever hosts `@cj` pays for everyone's
+use of her — fine for a mailbox, wrong for a room. Once a mention is bound
+to a principal (A2), **requester-pays** becomes computable: the person who
+asked has an identity to charge. That is a better default than host-pays and
+needs NO new proposal type. Build it before anything fancier.
+
+## The machinery already exists, and further along than expected
+
+`agent_budget_overages` (data-plane.sql) carries `approved_by` — "the
+deciding principal" — and its PRIMARY KEY includes `proposal_id`. So N rows
+per (account, binding, period), each with its own approver and amount,
+summed by the same `budgetExhaustedSql` the claim gate already runs.
+**"Three people chipped in" is representable today.** A BudgetShareProposal
+is largely the shipped `budget-overrun` shape with the approver being
+someone other than the owner.
+
+## The two shapes are different animals
+
+| | shape | treatment |
+|---|---|---|
+| **"chip in $5 now"** | discrete, bounded, one period | one overage row, one approver, done |
+| **"split 50/50 ongoing"** | STANDING AUTHORITY — it changes what happens to your money while you are not looking | the rules-ladder treatment: tier-2 hold tray, visible, and REVOCABLE |
+
+The second is the s31 lesson arriving in a second domain: a standing
+commitment is not a bigger one-off, it is a different kind of thing.
+
+## The line: excellent at attribution, honest about settlement
+
+The platform can say with precision whose work cost what, and who committed
+to cover it. Whether $5 actually MOVES between two humans is a payments
+problem, and s36 already set the rule: **payment ends at a prepared,
+reviewable handoff, never a transfer.** A BudgetShareProposal allocates
+HEADROOM, not dollars. Anything else and the product is a payment processor
+that also reads mail.
+
+---
+
 ## Order of work
 
 **A1 — notify only.** Proposals and their rationale pushed to a configured
@@ -208,8 +266,18 @@ owner, and a revoke, served from a separate origin with the two headers.
 **B2 — the first artifact.** `@hr`-shaped: an agent-authored page whose data
 comes entirely from the viewer's own session.
 
-A and B are independently buildable; the `@hr` story is what happens when
-both exist.
+**C1 — requester-pays**, once A2 supplies the identity. No new proposal
+type; the cheapest correct answer, and it may be the only one a household
+ever needs.
+
+**C2 — the chip-in.** A `budget-share` proposal writing an overage row for
+somebody else's binding — the shipped shape, a different approver.
+
+**C3 — the standing split**, only if C2's evidence shows one-offs are being
+re-approved over and over. Standing authority, hold tray, revocable.
+
+A, B and C are independently buildable; the `@hr` story is what happens when
+all three exist.
 
 ## Open questions
 
@@ -221,6 +289,11 @@ both exist.
    enrolling twice if you use two.)
 3. Slack and Discord both, or one first? (Discord has the standing guild;
    Slack has the workplace story s28 points at.)
+4. Does requester-pays need a FLOOR for the unenrolled? Someone who mentions
+   `@cj` before enrolling has no budget to charge — host-pays for a bounded
+   first taste, or refuse until enrolled? (Leaning: a small free allowance,
+   because "prove who you are before I answer at all" is a poor first
+   impression, and the ceremony reply itself costs nothing.)
 
 ## Related
 
@@ -230,4 +303,6 @@ both exist.
 - [[s09-messaging]] / [[s19-transports]] — one ledger, many venues; this is
   a venue.
 - [[s03.B-files]] — where an artifact lives.
+- [[s27-usage-and-spending]] — the ledger C reports into; this section adds
+  the SHARED-ROOM case it did not have to answer before.
 - [[s44-tool-loop]] — the artifact is a lens the loop could author.
