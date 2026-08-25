@@ -24,10 +24,18 @@
     // fidelity caveats; see CloudflareRelay) | "mock" (local dev).
     "RELAY": "ses"
     // For RELAY=cloudflare also set var CF_ACCOUNT_ID.
-  }
+  },
   // Secrets (wrangler secret put):
   //   SES_ACCESS_KEY_ID     — IAM user scoped to ses:SendRawEmail only
   //   SES_SECRET_ACCESS_KEY
   //   CF_EMAIL_API_TOKEN    — only for RELAY=cloudflare
   //   INTERNAL_TOKEN        — shared secret for /internal/* calls from jmap worker
+
+  // Logs. Absent from every mail worker until 2026-08-25, which is why a
+  // 14-hour inbound-mail outage had to be diagnosed from `wrangler tail` and a
+  // GraphQL analytics query instead of read from a log line. The exception was
+  // there the whole time — `D1_ERROR: no such table: ceremonies` — with nowhere
+  // to be seen. Volume here is a few hundred invocations a day, nowhere near
+  // the free plan's daily events allowance.
+  "observability": { "enabled": true }
 }

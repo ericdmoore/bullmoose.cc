@@ -36,6 +36,33 @@ jobs:
       - run: npm run typecheck
       - run: npm test
 
+      # ⚠️ THE DATABASE GATE — before any worker ships.
+      #
+      # This step exists because on 2026-08-24 this workflow deployed s33 code
+      # whose queries name `ceremonies` and `emails.assurance_json`, against a
+      # shard that had neither. The agent's cron threw every 5 minutes and
+      # ingest threw on every inbound email, so Email Routing BOUNCED MAIL for
+      # ~14 hours — noticed by a human receiving a bounce, not by any alarm.
+      #
+      # The infuriating part: `emails-assurance-json` was already tagged
+      # `blocks: "deploy"` in infra/migrations.mjs, and migrations.test.ts
+      # pinned it with the sentence "ingest against an un-migrated shard fails
+      # EVERY delivery". The knowledge was in the repo. Nothing in the deploy
+      # path read it. A marker no deploy consults is worse than none, because
+      # in review the list looks like a safety mechanism.
+      #
+      # It is READ-ONLY (each blocker's own `check` SELECT, the same SQL
+      # `migrate` uses) and refuses on an unreadable check rather than
+      # guessing — a false refusal costs one re-run, a false pass costs every
+      # delivery until someone notices.
+      #
+      # If this fails: dispatch migrate.yml, then re-run. Do not skip it.
+      - name: Refuse to deploy against a database that is behind
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: node infra/bootstrap.mjs blockers
+
       # Order IS the binding graph. Keep in sync with DEPLOY_ORDER in
       # infra/bootstrap.mjs — that file carries the derivation.
       #

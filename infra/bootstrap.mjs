@@ -731,7 +731,19 @@ function migrate() {
   if (unknown.length) {
     warn(`could not read state for: ${unknown.join(", ")} — applied blind, verify by hand`);
   }
-  info(applied ? `${applied} migration(s) applied` : "nothing to do — every migration already applied");
+  // Wording matters here: a dry run cannot read the remote database, so every
+  // migration looks pending and the count is "how many exist", not "how many
+  // would change". Reported as "applied", that reads as blast radius — a dry
+  // run said 40 the morning the real run changed 1, and the gap is entirely
+  // that `schemas` (CREATE ... IF NOT EXISTS) runs first and creates most of
+  // what `migrate` would otherwise add.
+  if (DRY) {
+    info(
+      `${applied} migration(s) would be considered — a dry run cannot read the shard, so this is the list length, not the change count`,
+    );
+  } else {
+    info(applied ? `${applied} migration(s) applied` : "nothing to do — every migration already applied");
+  }
 }
 
 /**
@@ -847,7 +859,76 @@ function secrets() {
   warn("do NOT set DEV_BEARER_TOKEN in prod — unset, auth runs purely on the token table");
 }
 
+/**
+ * blockers — refuse to deploy against a database that is behind.
+ *
+ * This exists because the marker already existed and nothing read it.
+ *
+ * `emails-assurance-json` was tagged `blocks: "deploy"`, and
+ * infra/migrations.test.ts pinned it with the sentence "ingest against an
+ * un-migrated shard fails EVERY delivery". Then deploy-mail.yml shipped the
+ * code that names that column without ever consulting the list, and inbound
+ * mail bounced for fourteen hours — visible only because a human noticed a
+ * bounce. A label no deploy path reads is worse than no label: in review the
+ * list looks like a safety mechanism.
+ *
+ * Read-only by construction. It runs each blocker's own `check` — the same
+ * SQL `migrate` uses to decide "already applied" — and changes nothing.
+ *
+ * An UNREADABLE check is treated as a refusal, not a pass. Deploying blind
+ * against a possibly-missing blocker is precisely the failure this guards, and
+ * the two costs are not symmetric: a false refusal costs one re-run, a false
+ * pass costs every delivery until someone notices.
+ */
+function blockers() {
+  step("blockers — is the database ready for the code about to ship?");
+  const list = MIGRATIONS.filter((m) => m.blocks === "deploy");
+  if (DRY) {
+    info(`${list.length} deploy-blocking migration(s) would be checked against ${D1_NAME}`);
+    return;
+  }
+
+  const missing = [];
+  const unreadable = [];
+  for (const m of list) {
+    const r = wrangler(["d1", "execute", D1_NAME, "--remote", "--json", "--command", m.check], {
+      capture: true,
+      allowFail: true,
+    });
+    const parsed = r.status === 0 ? parseJson(r.stdout, null) : null;
+    const rows = Array.isArray(parsed) ? parsed[0]?.results : parsed?.results;
+    const n = Array.isArray(rows) ? rows[0]?.n : undefined;
+    if (typeof n !== "number") unreadable.push(m);
+    else if (n >= 1) ok(`${m.id}`);
+    else missing.push(m);
+  }
+
+  if (unreadable.length) {
+    for (const m of unreadable) console.log(paint(c.dim, `  ? ${m.id} — state unreadable`));
+    die(
+      `could not read ${unreadable.length} blocker check(s) against ${D1_NAME} — refusing to deploy blind. ` +
+        `This is usually a token scope (Account > D1 > Edit) or connectivity, not a schema problem.`,
+    );
+  }
+  if (missing.length) {
+    console.log("");
+    for (const m of missing) console.log(paint(c.red, `  ✗ ${m.id} — ${m.why}`));
+    console.log("");
+    die(
+      `${missing.length} deploy-blocking migration(s) are NOT applied to ${D1_NAME}. ` +
+        `Deploying now would ship code whose queries name schema that does not exist — the failure lands on ` +
+        `live traffic, not on this run. Apply them first: \`node infra/bootstrap.mjs migrate\` (or dispatch ` +
+        `.github/workflows/migrate.yml), then re-run this deploy.`,
+    );
+  }
+  info(`${list.length} deploy blocker(s) present — safe to deploy`);
+}
+
 function deploy() {
+  // The guard runs HERE as well as in CI, so it cannot be skipped by calling
+  // the deploy phase directly (`bootstrap.mjs deploy`), which is exactly how
+  // someone reaches production without passing through `migrate`.
+  blockers();
   step("deploy — workers in binding-graph order");
   for (const w of DEPLOY_ORDER) {
     console.log(paint(c.dim, `  — ${w}`));
@@ -1445,7 +1526,7 @@ async function doctor() {
 
 // ───────────────────────────────── driver ───────────────────────────────────
 
-export const PHASES = { resources, wire, schemas, migrate, secrets, deploy, explorer, doctor };
+export const PHASES = { resources, wire, schemas, migrate, secrets, blockers, deploy, explorer, doctor };
 // migrate sits BETWEEN schemas and deploy, and that position is the point.
 // `schemas` cannot upgrade an existing database -- every DDL is IF NOT EXISTS,
 // which is idempotent for CREATING and silently declines to UPGRADE -- and two

@@ -58,9 +58,17 @@
     // (webmail/public/oauth/client.json), so no registration step exists to
     // drift: the id, the document, and this allowance all name the same URL.
     "WEBMAIL_CLIENT_ID": "https://app.bullmoose.cc/oauth/client.json"
-  }
+  },
 
   // No secrets of its own. The provider derives its key material from the
   // OAUTH_KV contents; principal authentication at the consent screen reuses
   // the existing bm_ token path against DB.
+
+  // Logs. Absent from every mail worker until 2026-08-25, which is why a
+  // 14-hour inbound-mail outage had to be diagnosed from `wrangler tail` and a
+  // GraphQL analytics query instead of read from a log line. The exception was
+  // there the whole time — `D1_ERROR: no such table: ceremonies` — with nowhere
+  // to be seen. Volume here is a few hundred invocations a day, nowhere near
+  // the free plan's daily events allowance.
+  "observability": { "enabled": true }
 }
