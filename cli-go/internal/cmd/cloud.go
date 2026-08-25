@@ -145,8 +145,8 @@ func runCloud(s *bmio.Streams, argv []string) int {
 		return runCloudInstall(s, a)
 	case "doctor":
 		return runCloudDoctor(s, a)
-	case "webmail":
-		return runCloudWebmail(s, a)
+	case "site":
+		return runCloudSite(s, a)
 	case "":
 		return die(s, bmio.Fail("cloud needs a verb: `bullmoose cloud plan|install|doctor --zone <domain>`", bmio.ExitUsage))
 	default:
@@ -340,7 +340,7 @@ func runCloudDoctor(s *bmio.Streams, a cloudArgs) int {
 }
 
 /**
- * `cloud webmail push --dir <built site>` — put a built webmail in R2.
+ * `cloud site push --dir <built site>` — put a built webmail in R2.
  *
  * The install path uploads the PUBLISHED tarball; this uploads a directory
  * you just built. It exists so our own CI has something to call instead of
@@ -354,16 +354,16 @@ func runCloudDoctor(s *bmio.Streams, a cloudArgs) int {
  * asking it to spend `Zone > Read` for something it can be told is a wider
  * token for no reason.
  */
-func runCloudWebmail(s *bmio.Streams, a cloudArgs) int {
+func runCloudSite(s *bmio.Streams, a cloudArgs) int {
 	sub := ""
 	if len(a.Positionals) > 1 {
 		sub = a.Positionals[1]
 	}
 	if sub != "push" && sub != "prune" {
-		return die(s, bmio.Fail("cloud webmail takes `push --dir <built site>` or `prune --prefix <prefix>`", bmio.ExitUsage))
+		return die(s, bmio.Fail("cloud site takes `push --dir <built site>` or `prune --prefix <prefix>`", bmio.ExitUsage))
 	}
 	if sub == "push" && a.Dir == "" {
-		return die(s, bmio.Fail("cloud webmail push needs --dir <built site> (webmail/dist after `npm run -w webmail build`)", bmio.ExitUsage))
+		return die(s, bmio.Fail("cloud site push needs --dir <built site> (e.g. webmail/dist after `npm run -w webmail build`)", bmio.ExitUsage))
 	}
 	token := os.Getenv("CLOUDFLARE_API_TOKEN")
 	if token == "" {
@@ -391,7 +391,7 @@ func runCloudWebmail(s *bmio.Streams, a cloudArgs) int {
 	}
 
 	if sub == "prune" {
-		n, err := cloud.PruneWebmailPrefix(cf, acct, bucket, a.Prefix, func(line string) { s.Note("  " + line) })
+		n, err := cloud.PruneSitePrefix(cf, acct, bucket, a.Prefix, func(line string) { s.Note("  " + line) })
 		if err != nil {
 			return die(s, err)
 		}
@@ -399,13 +399,13 @@ func runCloudWebmail(s *bmio.Streams, a cloudArgs) int {
 		return 0
 	}
 
-	n, err := cloud.UploadWebmailDir(cf, acct, bucket, a.Dir, a.Prefix, func(line string) { s.Note("  " + line) })
+	n, err := cloud.UploadSiteDir(cf, acct, bucket, a.Dir, a.Prefix, func(line string) { s.Note("  " + line) })
 	if err != nil {
 		if n > 0 {
 			// Same contract as the installer: what landed stays, and a re-run
 			// overwrites by key. Naming the count makes the retry informed
 			// rather than a coin flip about whether to start over.
-			s.Note("webmail push: stopped after " + strconv.Itoa(n) + " file(s) — re-running is safe, objects overwrite by key")
+			s.Note("site push: stopped after " + strconv.Itoa(n) + " file(s) — re-running is safe, objects overwrite by key")
 		}
 		return die(s, err)
 	}
@@ -413,7 +413,7 @@ func runCloudWebmail(s *bmio.Streams, a cloudArgs) int {
 	if a.Prefix != "" {
 		where += "/" + strings.TrimSuffix(a.Prefix, "/")
 	}
-	s.Out("webmail pushed to " + where + " (" + strconv.Itoa(n) + " objects).")
+	s.Out("site pushed to " + where + " (" + strconv.Itoa(n) + " objects).")
 	return 0
 }
 

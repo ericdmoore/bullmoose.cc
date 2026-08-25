@@ -119,7 +119,7 @@ func TestWebmailAssetsFromDir_WalksAndKeepsHierarchy(t *testing.T) {
 	mustWrite(t, dir, "_astro/app.js", "console.log(1)")
 	mustWrite(t, dir, "settings/index.html", "<p>settings</p>")
 
-	assets, err := webmailAssetsFromDir(dir)
+	assets, err := siteAssetsFromDir(dir)
 	if err != nil {
 		t.Fatalf("expand: %v", err)
 	}
@@ -144,14 +144,14 @@ func TestWebmailAssetsFromDir_RefusesABuildWithNoEntryPoint(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, dir, "_astro/app.js", "console.log(1)")
 
-	_, err := webmailAssetsFromDir(dir)
+	_, err := siteAssetsFromDir(dir)
 	if err == nil || !strings.Contains(err.Error(), "index.html") {
 		t.Fatalf("a build with no index.html must be refused by name, got %v", err)
 	}
 }
 
 func TestWebmailAssetsFromDir_RefusesAnEmptyDirWithABuildHint(t *testing.T) {
-	_, err := webmailAssetsFromDir(t.TempDir())
+	_, err := siteAssetsFromDir(t.TempDir())
 	// "contained no files" alone reads like a bug in the uploader; the
 	// overwhelmingly likely cause is that nobody ran the build.
 	if err == nil || !strings.Contains(err.Error(), "build") {
@@ -206,7 +206,7 @@ func TestPrune_RefusesAnEmptyPrefixWithoutCallingAnything(t *testing.T) {
 	cf := NewCF(srv.URL, "t", srv.Client())
 
 	for _, prefix := range []string{"", "   "} {
-		n, err := PruneWebmailPrefix(cf, "acct", "bucket", prefix, func(string) {})
+		n, err := PruneSitePrefix(cf, "acct", "bucket", prefix, func(string) {})
 		if err == nil {
 			t.Fatalf("prefix %q must be refused", prefix)
 		}
@@ -222,7 +222,7 @@ func TestPrune_RefusesAnEmptyPrefixWithoutCallingAnything(t *testing.T) {
 	}
 }
 
-func TestUploadWebmailDir_PutsEveryKeyUnderThePrefix(t *testing.T) {
+func TestUploadSiteDir_PutsEveryKeyUnderThePrefix(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, dir, "index.html", "<!doctype html>")
 	mustWrite(t, dir, "_astro/app.js", "console.log(1)")
@@ -237,7 +237,7 @@ func TestUploadWebmailDir_PutsEveryKeyUnderThePrefix(t *testing.T) {
 
 	// "pr-7" without the trailing slash is the shape a workflow writes, and
 	// the one that silently produces `pr-7index.html` if nobody normalizes.
-	if _, err := UploadWebmailDir(cf, "acct", "bucket", dir, "pr-7", func(string) {}); err != nil {
+	if _, err := UploadSiteDir(cf, "acct", "bucket", dir, "pr-7", func(string) {}); err != nil {
 		t.Fatalf("upload: %v", err)
 	}
 	joined := strings.Join(got, "\n")

@@ -59,6 +59,8 @@ const ROOT = join(import.meta.dirname, "..");
  */
 export const NOT_INCLUDED = {
   "demo-keys": "absent from DEPLOY_ORDER; needs its own resource/secret story (.feedback/fromClaude/infra/013)",
+  sitehost:
+    "this site, not the product — it serves bullmoose.cc's own marketing + guides pages from a bucket only this repo fills (ships from .github/workflows/deploy.yml)",
   webpreview:
     "this repository's review tooling, not product — it serves pull-request previews on preview-*.bullmoose.cc, and an install has no pull requests to preview (ships from .github/workflows/deploy-webpreview.yml)",
 };
