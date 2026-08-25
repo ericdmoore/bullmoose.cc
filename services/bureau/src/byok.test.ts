@@ -483,7 +483,7 @@ describe("the door itself", () => {
   it("refuses a soft-deleted account", async () => {
     const seen = upstream();
     const h = await harness();
-    h.db.exec(`UPDATE accounts SET deleted_at = 99 WHERE id = '${A.accountId}'`);
+    await h.db.exec(`UPDATE accounts SET deleted_at = 99 WHERE id = '${A.accountId}'`);
     const res = await ask(h);
     expect(res.status).toBe(404);
     expect(seen).toHaveLength(0);

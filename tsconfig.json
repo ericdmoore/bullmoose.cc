@@ -13,30 +13,36 @@
     "skipLibCheck": true,
     "noEmit": true,
     "resolveJsonModule": true,
-    "baseUrl": ".",
+    // No `baseUrl`, and every `paths` value below is `./`-prefixed. Both are
+    // required by the type-aware linter (oxlint --type-aware / tsgolint), which
+    // rejects non-relative `paths` outright and errors on `baseUrl` because
+    // TypeScript-Go removed the option. Without `baseUrl`, `paths` resolve
+    // relative to THIS file's directory, which is what `.` meant anyway -- so
+    // resolution is unchanged.
+    // Keep new entries `./`-prefixed or the linter stops type-checking SILENTLY.
     "paths": {
-      "@bullmoose/auth-core": ["packages/auth-core/src/index.ts"],
-      "@bullmoose/boundary": ["packages/boundary/src/index.ts"],
-      "@bullmoose/auth-core/principal": ["packages/auth-core/src/principal.ts"],
-      "@bullmoose/auth-core/invocation": ["packages/auth-core/src/invocation.ts"],
-      "@bullmoose/auth-core/loginThrottle": ["packages/auth-core/src/loginThrottle.ts"],
-      "@bullmoose/contacts-core": ["packages/contacts-core/src/index.ts"],
-      "@bullmoose/calendar-core": ["packages/calendar-core/src/index.ts"],
-      "@bullmoose/jmap-core": ["packages/jmap-core/src/index.ts"],
-      "@bullmoose/account-do": ["packages/account-do/src/index.ts"],
-      "@bullmoose/mailstore/outboundBound": ["packages/mailstore/src/outboundBound.ts"],
-      "@bullmoose/mailstore": ["packages/mailstore/src/index.ts"],
-      "@bullmoose/mime": ["packages/mime/src/index.ts"],
-      "@bullmoose/outbound": ["packages/outbound/src/index.ts"],
-      "@bullmoose/scheduling": ["packages/scheduling/src/index.ts"],
+      "@bullmoose/auth-core": ["./packages/auth-core/src/index.ts"],
+      "@bullmoose/boundary": ["./packages/boundary/src/index.ts"],
+      "@bullmoose/auth-core/principal": ["./packages/auth-core/src/principal.ts"],
+      "@bullmoose/auth-core/invocation": ["./packages/auth-core/src/invocation.ts"],
+      "@bullmoose/auth-core/loginThrottle": ["./packages/auth-core/src/loginThrottle.ts"],
+      "@bullmoose/contacts-core": ["./packages/contacts-core/src/index.ts"],
+      "@bullmoose/calendar-core": ["./packages/calendar-core/src/index.ts"],
+      "@bullmoose/jmap-core": ["./packages/jmap-core/src/index.ts"],
+      "@bullmoose/account-do": ["./packages/account-do/src/index.ts"],
+      "@bullmoose/mailstore/outboundBound": ["./packages/mailstore/src/outboundBound.ts"],
+      "@bullmoose/mailstore": ["./packages/mailstore/src/index.ts"],
+      "@bullmoose/mime": ["./packages/mime/src/index.ts"],
+      "@bullmoose/outbound": ["./packages/outbound/src/index.ts"],
+      "@bullmoose/scheduling": ["./packages/scheduling/src/index.ts"],
       // Test-only. Deliberately NOT linked into node_modules: it imports
       // node:sqlite, which workerd does not have, so resolution exists only
       // here and in vitest.config.ts and a worker build fails on the bare
       // specifier rather than bundling it.
-      "@bullmoose/test-fakes": ["packages/test-fakes/src/index.ts"]
+      "@bullmoose/test-fakes": ["./packages/test-fakes/src/index.ts"]
     }
   },
-  "include": ["packages/*/src/**/*.ts", "services/*/src/**/*.ts"],
+  "include": ["./packages/*/src/**/*.ts", "services/*/src/**/*.ts"],
   // One workspace is typechecked with its OWN compiler settings, not this
   // workers-typed program, so it is excluded here and chained into the root
   // `typecheck` script (`&& npm run -w webmail typecheck`):
