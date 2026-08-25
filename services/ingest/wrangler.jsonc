@@ -30,7 +30,7 @@
   "kv_namespaces": [{ "binding": "ROUTES", "id": "27a812f0c1aa48fca2a090eb2a94f52a" }],
 
   // Cloud agent runtime — poked (fire-and-forget) after invocation inserts.
-  "services": [{ "binding": "AGENT", "service": "bullmoose-agent" }]
+  "services": [{ "binding": "AGENT", "service": "bullmoose-agent" }],
 
   // Secrets (wrangler secret put):
   //   INTERNAL_TOKEN — authenticates the agent poke (same shared secret)
@@ -41,4 +41,12 @@
   //     attachment also becomes a FileNode (s03.B T3). Default 5 MiB; "0"
   //     turns the sidestep off; a route's `sidestepBytes` overrides it per
   //     account.
+
+  // Logs. Absent from every mail worker until 2026-08-25, which is why a
+  // 14-hour inbound-mail outage had to be diagnosed from `wrangler tail` and a
+  // GraphQL analytics query instead of read from a log line. The exception was
+  // there the whole time — `D1_ERROR: no such table: ceremonies` — with nowhere
+  // to be seen. Volume here is a few hundred invocations a day, nowhere near
+  // the free plan's daily events allowance.
+  "observability": { "enabled": true }
 }
