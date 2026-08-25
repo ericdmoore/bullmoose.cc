@@ -255,7 +255,7 @@ describe("re-provisioning swaps the key in place", () => {
     await h.post("/provider-keys", { email, key: KEY });
     const grantId = h.db.query<{ id: string }>(`SELECT id FROM bureau_grants`)[0]!.id;
     expect((await h.get(`/bureau-grants`)).status).toBe(200);
-    h.db.exec(`UPDATE bureau_grants SET revoked_at = 5 WHERE id = '${grantId}'`);
+    await h.db.exec(`UPDATE bureau_grants SET revoked_at = 5 WHERE id = '${grantId}'`);
 
     await h.post("/provider-keys", { email, key: KEY });
 

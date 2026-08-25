@@ -123,7 +123,10 @@ export async function handleEventSource(
   const encoder = new TextEncoder();
   let closed = false;
   let eventId = 0;
-  const timers: Array<ReturnType<typeof setInterval> | ReturnType<typeof setTimeout>> = [];
+  // One type, not a union: setInterval and setTimeout return the SAME handle
+  // type here, so spelling both was a duplicated constituent that read as if
+  // the array held two different things.
+  const timers: Array<ReturnType<typeof setInterval>> = [];
   const stopTimers = () => {
     for (const t of timers) clearInterval(t as ReturnType<typeof setInterval>);
     timers.length = 0;
