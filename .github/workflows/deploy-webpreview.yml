@@ -1,0 +1,50 @@
+name: Deploy webpreview
+
+# The worker that serves every PR preview (services/webpreview).
+#
+# ⚠️ MAIN ONLY, AND DELIBERATELY NOT PART OF preview-app.yml. That workflow
+# runs on pull_request and checks out the PR's head, so deploying the worker
+# from there would ship UNREVIEWED code that serves everyone's previews — a PR
+# touching webpreview would take effect globally before anyone read it. The
+# assets a PR uploads are scoped to its own `pr-<n>/` prefix; the worker that
+# serves them is shared infrastructure and ships from main like anything else.
+#
+# Not in infra/bootstrap.mjs DEPLOY_ORDER, and named in stackBundle's
+# `notIncluded`: this is OUR repository's review tooling, not part of the
+# product. A stranger installing bullmoose has no pull requests to preview,
+# and shipping it would give them a worker routed at a `preview-*` hostname
+# they never asked for.
+#
+# The path filter is the anti-staleness guarantee that DEPLOY_ORDER's drift
+# test would otherwise provide (see infra/deployOrder.test.ts on services/
+# oauth running nine commits behind production). Note it includes webhost's
+# serve.ts, which both workers share.
+#
+# ⚠️ A serve.ts change redeploys webpreview automatically but NOT webhost —
+# deploy-mail.yml is dispatch-only by design. After changing serve.ts, deploy
+# the mail platform too, or the app and its previews run different code.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/webpreview/**"
+      - "services/webhost/src/serve.ts"
+      - ".github/workflows/deploy-webpreview.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy webpreview
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - name: Deploy
+        run: npx wrangler deploy -c services/webpreview/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

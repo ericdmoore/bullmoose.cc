@@ -8,6 +8,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -187,4 +189,64 @@ func keysOf(m map[string]string) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// ---- prefixes: one bucket, many builds ----
+
+func TestPrune_RefusesAnEmptyPrefixWithoutCallingAnything(t *testing.T) {
+	// The dangerous shape: a workflow computes `--prefix pr-$PR` and $PR is
+	// unset. An empty prefix matches every key, so "prune the closed PR"
+	// would become "delete the site". It must refuse BEFORE any request.
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	cf := NewCF(srv.URL, "t", srv.Client())
+
+	for _, prefix := range []string{"", "   "} {
+		n, err := PruneWebmailPrefix(cf, "acct", "bucket", prefix, func(string) {})
+		if err == nil {
+			t.Fatalf("prefix %q must be refused", prefix)
+		}
+		if n != 0 {
+			t.Errorf("refused prune reported %d deletions", n)
+		}
+		if !strings.Contains(err.Error(), "every object") {
+			t.Errorf("the refusal should say what it would have destroyed, got %v", err)
+		}
+	}
+	if called {
+		t.Error("an empty-prefix prune reached the network — it must refuse before that")
+	}
+}
+
+func TestUploadWebmailDir_PutsEveryKeyUnderThePrefix(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "index.html", "<!doctype html>")
+	mustWrite(t, dir, "_astro/app.js", "console.log(1)")
+
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	cf := NewCF(srv.URL, "t", srv.Client())
+
+	// "pr-7" without the trailing slash is the shape a workflow writes, and
+	// the one that silently produces `pr-7index.html` if nobody normalizes.
+	if _, err := UploadWebmailDir(cf, "acct", "bucket", dir, "pr-7", func(string) {}); err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	joined := strings.Join(got, "\n")
+	for _, want := range []string{"/objects/pr-7/index.html", "/objects/pr-7/_astro/app.js"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("missing %s in:\n%s", want, joined)
+		}
+	}
+	if strings.Contains(joined, "pr-7index.html") {
+		t.Error("prefix was concatenated without a separator — the worker would never find these")
+	}
 }

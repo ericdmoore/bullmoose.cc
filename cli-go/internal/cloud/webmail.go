@@ -23,6 +23,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -125,6 +126,98 @@ func (c *CF) putR2Object(acct, bucket, key string, body []byte, contentType stri
 	return nil
 }
 
+/**
+ * PruneWebmailPrefix deletes every object under a prefix.
+ *
+ * Built for closed pull requests (#371): a preview's objects outlive the
+ * branch otherwise, and a bucket that only ever grows is a bill nobody
+ * decided to pay. It is also the tool the production bucket will eventually
+ * want, since uploads are additive and a deleted route serves until pruned.
+ *
+ * An EMPTY PREFIX IS REFUSED. `prune --prefix ""` reads as "prune nothing"
+ * and would mean "delete the entire site" — including the index.html the
+ * whole app falls back to. That is one absent shell variable away in any
+ * workflow that computes a prefix, so it is refused here rather than
+ * documented as a caution.
+ */
+func PruneWebmailPrefix(cf *CF, acct, bucket, prefix string, log func(string)) (int, error) {
+	if strings.TrimSpace(prefix) == "" {
+		return 0, fmt.Errorf("prune needs a non-empty --prefix: an empty one would delete every object in %s", bucket)
+	}
+	prefix = strings.TrimSuffix(prefix, "/") + "/"
+	keys, err := cf.listR2Objects(acct, bucket, prefix)
+	if err != nil {
+		return 0, err
+	}
+	if len(keys) == 0 {
+		log(fmt.Sprintf("prune: nothing under r2://%s/%s", bucket, strings.TrimSuffix(prefix, "/")))
+		return 0, nil
+	}
+	for i, k := range keys {
+		if err := cf.deleteR2Object(acct, bucket, k); err != nil {
+			return i, fmt.Errorf("deleting %s (%d of %d): %w", k, i+1, len(keys), err)
+		}
+	}
+	log(fmt.Sprintf("prune: %d objects removed from r2://%s/%s", len(keys), bucket, strings.TrimSuffix(prefix, "/")))
+	return len(keys), nil
+}
+
+// listR2Objects pages through every key under a prefix. The cursor loop is
+// not optional: the API caps a page at 1000, and a build with more files than
+// that would prune partially and silently — leaving a half-deleted site that
+// still answers.
+func (c *CF) listR2Objects(acct, bucket, prefix string) ([]string, error) {
+	var keys []string
+	cursor := ""
+	for page := 0; page < 100; page++ { // 100k objects; a runaway guard, not a limit anyone should reach
+		path := "/accounts/" + acct + "/r2/buckets/" + bucket + "/objects?per_page=1000&prefix=" + pathEscape(prefix)
+		if cursor != "" {
+			path += "&cursor=" + pathEscape(cursor)
+		}
+		var raw json.RawMessage
+		if err := c.getJSONWithInfo(path, &raw, &cursor); err != nil {
+			return nil, err
+		}
+		var objs []struct {
+			Key string `json:"key"`
+		}
+		if err := json.Unmarshal(raw, &objs); err != nil {
+			return nil, fmt.Errorf("listing r2://%s: %w", bucket, err)
+		}
+		for _, o := range objs {
+			keys = append(keys, o.Key)
+		}
+		if cursor == "" {
+			return keys, nil
+		}
+	}
+	return nil, fmt.Errorf("listing r2://%s/%s did not terminate after 100 pages", bucket, prefix)
+}
+
+func (c *CF) deleteR2Object(acct, bucket, key string) error {
+	req, err := http.NewRequest(http.MethodDelete,
+		c.Base+"/accounts/"+acct+"/r2/buckets/"+bucket+"/objects/"+pathEscape(key), nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	res, err := c.HTTP.Do(req)
+	if err != nil {
+		return fmt.Errorf("DELETE %s: %w", key, err)
+	}
+	defer res.Body.Close()
+	_, _ = io.Copy(io.Discard, res.Body)
+	// 404 is success: prune is idempotent, and a re-run after a partial
+	// failure must not stop on the objects the first run already removed.
+	if res.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	if res.StatusCode < 200 || res.StatusCode > 299 {
+		return fmt.Errorf("DELETE %s: HTTP %d", key, res.StatusCode)
+	}
+	return nil
+}
+
 // pathEscape encodes a key for the URL path WITHOUT turning its slashes
 // into %2F — R2 keys are hierarchical and `_astro/app.js` must stay two
 // segments, or the object lands under a name the worker will never ask for.
@@ -219,10 +312,21 @@ func uploadWebmail(cf *CF, acct, bucket string, targz []byte, log func(string)) 
  * which is the failure this repo keeps rediscovering. Same rules, same bytes,
  * two front doors.
  */
-func UploadWebmailDir(cf *CF, acct, bucket, dir string, log func(string)) (int, error) {
+func UploadWebmailDir(cf *CF, acct, bucket, dir, prefix string, log func(string)) (int, error) {
 	assets, err := webmailAssetsFromDir(dir)
 	if err != nil {
 		return 0, err
+	}
+	if prefix != "" {
+		// Normalized here rather than trusted from the caller: `pr-7` and
+		// `pr-7/` differ by one character and by every key in the bucket,
+		// and the failure is silent — the objects land as `pr-7index.html`,
+		// the worker asks for `pr-7/index.html`, and the preview 404s with
+		// nothing anywhere saying why.
+		prefix = strings.TrimSuffix(prefix, "/") + "/"
+		for i := range assets {
+			assets[i].Key = prefix + assets[i].Key
+		}
 	}
 	return uploadAssets(cf, acct, bucket, assets, log)
 }

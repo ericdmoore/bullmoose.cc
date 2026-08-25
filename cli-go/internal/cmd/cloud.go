@@ -42,6 +42,7 @@ type cloudArgs struct {
 	StackVersion string
 	StackBase    string
 	Dir          string
+	Prefix       string
 	Bucket       string
 	Account      string
 	Positionals  []string
@@ -85,6 +86,8 @@ func parseCloud(argv []string) cloudArgs {
 				a.StackBase = value()
 			case "dir":
 				a.Dir = value()
+			case "prefix":
+				a.Prefix = value()
 			case "bucket":
 				a.Bucket = value()
 			case "account":
@@ -356,10 +359,10 @@ func runCloudWebmail(s *bmio.Streams, a cloudArgs) int {
 	if len(a.Positionals) > 1 {
 		sub = a.Positionals[1]
 	}
-	if sub != "push" {
-		return die(s, bmio.Fail("cloud webmail takes one verb today: `cloud webmail push --dir <built site>`", bmio.ExitUsage))
+	if sub != "push" && sub != "prune" {
+		return die(s, bmio.Fail("cloud webmail takes `push --dir <built site>` or `prune --prefix <prefix>`", bmio.ExitUsage))
 	}
-	if a.Dir == "" {
+	if sub == "push" && a.Dir == "" {
 		return die(s, bmio.Fail("cloud webmail push needs --dir <built site> (webmail/dist after `npm run -w webmail build`)", bmio.ExitUsage))
 	}
 	token := os.Getenv("CLOUDFLARE_API_TOKEN")
@@ -387,7 +390,16 @@ func runCloudWebmail(s *bmio.Streams, a cloudArgs) int {
 		acct = probe.Zone.AccountID
 	}
 
-	n, err := cloud.UploadWebmailDir(cf, acct, bucket, a.Dir, func(line string) { s.Note("  " + line) })
+	if sub == "prune" {
+		n, err := cloud.PruneWebmailPrefix(cf, acct, bucket, a.Prefix, func(line string) { s.Note("  " + line) })
+		if err != nil {
+			return die(s, err)
+		}
+		s.Out("pruned " + strconv.Itoa(n) + " object(s) from r2://" + bucket + "/" + strings.TrimSuffix(a.Prefix, "/") + ".")
+		return 0
+	}
+
+	n, err := cloud.UploadWebmailDir(cf, acct, bucket, a.Dir, a.Prefix, func(line string) { s.Note("  " + line) })
 	if err != nil {
 		if n > 0 {
 			// Same contract as the installer: what landed stays, and a re-run
@@ -397,7 +409,11 @@ func runCloudWebmail(s *bmio.Streams, a cloudArgs) int {
 		}
 		return die(s, err)
 	}
-	s.Out("webmail pushed to r2://" + bucket + " (" + strconv.Itoa(n) + " objects).")
+	where := "r2://" + bucket
+	if a.Prefix != "" {
+		where += "/" + strings.TrimSuffix(a.Prefix, "/")
+	}
+	s.Out("webmail pushed to " + where + " (" + strconv.Itoa(n) + " objects).")
 	return 0
 }
 
