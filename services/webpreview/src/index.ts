@@ -8,12 +8,19 @@
  * itself moved to R2 in #368/#369; this moves its previews, so the Pages
  * project and that token scope can both go.
  *
- * ## Why the hostname is `preview-<n>.<zone>` and not `<n>.preview.<zone>`
+ * ## Why the hostname is `<n>-preview.<zone>`
  *
- * The nicer-looking nested form is a MULTI-LEVEL wildcard, and Cloudflare's
- * free Universal SSL does not cover `*.preview.<zone>` — only one level
- * (`*.<zone>`) plus the apex. A nested preview host would serve a cert error
- * on every PR, on the free plan this platform targets. One level it is.
+ * Two constraints, and between them exactly one shape survives.
+ *
+ * The nicer-looking `<n>.preview.<zone>` is a MULTI-LEVEL wildcard, and
+ * Cloudflare's free Universal SSL does not cover `*.preview.<zone>` — only one
+ * level (`*.<zone>`) plus the apex. It would serve a cert error on every PR.
+ *
+ * So: one level. But the obvious `preview-<n>.<zone>` cannot be ROUTED. The
+ * API refuses its pattern outright — "Route pattern may only contain wildcards
+ * at the beginning of the hostname and the end of the path" (code 10022) — so
+ * `preview-*.<zone>/*` is not a legal route and `*preview.<zone>/*` is. The
+ * wildcard has to lead, which puts the number first.
  *
  * ## A preview is deliberately INERT
  *
@@ -43,15 +50,16 @@ export interface Env {
 }
 
 /**
- * `preview-123.bullmoose.cc` → `pr-123/`.
+ * `123-preview.bullmoose.cc` → `pr-123/`.
  *
- * Returns null for anything else, INCLUDING `preview-abc` — the number is
+ * Returns null for anything else, INCLUDING `abc-preview` — the number is
  * the PR, the workflow only ever writes numeric prefixes, and accepting a
  * free-form label would let any hostname under the wildcard route address any
- * prefix in the bucket.
+ * prefix in the bucket. The route pattern is `*preview.<zone>/*`, so the
+ * wildcard matches far more than this worker should serve.
  */
 export function prefixForHost(hostname: string): string | null {
-  const m = /^preview-(\d+)\./.exec(hostname);
+  const m = /^(\d+)-preview\./.exec(hostname);
   return m ? `pr-${m[1]}/` : null;
 }
 
@@ -60,10 +68,10 @@ export default {
     const host = new URL(request.url).hostname;
     const prefix = prefixForHost(host);
     if (!prefix) {
-      // The route pattern is `preview-*`, so arriving here means a hostname
-      // that matched the wildcard but is not a PR — say which, rather than
-      // serving PR #1 because a regex was lenient.
-      return new Response(`${host} is not a preview host (expected preview-<pr number>)`, { status: 404 });
+      // The route pattern is `*preview`, which matches far more than PRs, so
+      // arriving here means a hostname that matched the wildcard but is not a
+      // PR — say which, rather than serving PR #1 because a regex was lenient.
+      return new Response(`${host} is not a preview host (expected <pr number>-preview)`, { status: 404 });
     }
     return serveStatic(request, env.PREVIEWS, {
       prefix,

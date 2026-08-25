@@ -12,13 +12,16 @@
 #
 # ## The hostname (#371)
 #
-# `preview-<pr>.bullmoose.cc`, served by services/webpreview out of the
+# `<pr>-preview.bullmoose.cc`, served by services/webpreview out of the
 # `bullmoose-webmail-preview` bucket under a `pr-<n>/` prefix. This replaced a
 # *.pages.dev preview when Pages left the stack.
 #
-# It is ONE level of subdomain on purpose. The nicer `<n>.preview.bullmoose.cc`
-# is a multi-level wildcard, and free Universal SSL covers only `*.bullmoose.cc`
-# plus the apex — the nested form would serve a cert error on every PR.
+# The shape is forced from both sides. `<n>.preview.bullmoose.cc` is a
+# multi-level wildcard and free Universal SSL covers only `*.bullmoose.cc` plus
+# the apex, so it would serve a cert error on every PR. And `preview-<n>` cannot
+# be routed at all — Cloudflare refuses any pattern whose hostname wildcard is
+# not leading ("may only contain wildcards at the beginning of the hostname",
+# API code 10022). Wildcard leads, so the number does too.
 #
 # ## ⚠️ WHAT A PREVIEW CAN AND CANNOT SHOW — unchanged by the move
 #
@@ -102,11 +105,11 @@ jobs:
                   | tr -d ' \n' | grep -oE '"id":"[0-9a-f]{32}"' | head -1 | cut -d'"' -f4)
           [ -n "$zone" ] || { echo "::error::could not resolve zone id"; exit 1; }
           recs="https://api.cloudflare.com/client/v4/zones/$zone/dns_records"
-          host="preview-${PR}.bullmoose.cc"
+          host="${PR}-preview.bullmoose.cc"
           if cf "$recs?name=$host" | tr -d ' \n' | grep -q "\"name\":\"$host\""; then
             echo "$host already resolves"
           else
-            r=$(cf -X POST -d "{\"type\":\"AAAA\",\"name\":\"preview-${PR}\",\"content\":\"100::\",\"proxied\":true,\"comment\":\"PR #${PR} preview — removed by preview-cleanup.yml\"}" "$recs")
+            r=$(cf -X POST -d "{\"type\":\"AAAA\",\"name\":\"${PR}-preview\",\"content\":\"100::\",\"proxied\":true,\"comment\":\"PR #${PR} preview — removed by preview-cleanup.yml\"}" "$recs")
             printf '%s' "$r" | grep -q '"success":true' \
               && echo "created $host" \
               || { echo "::error::could not create $host"; printf '%s' "$r" | head -c 400; exit 1; }
@@ -117,7 +120,7 @@ jobs:
         with:
           script: |
             const pr = context.payload.pull_request;
-            const url = `https://preview-${pr.number}.bullmoose.cc`;
+            const url = `https://${pr.number}-preview.bullmoose.cc`;
             const marker = "<!-- preview-app -->";
             const body =
               `${marker}\n### Preview\n\n${url}\n\n` +

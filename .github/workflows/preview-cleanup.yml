@@ -7,7 +7,7 @@ name: Clean up preview
 # opened leaves a permanent hostname resolving to a build of a branch that no
 # longer exists, and a bucket that only grows.
 #
-# The DNS record is the part that actually matters. A stale `preview-42`
+# The DNS record is the part that actually matters. A stale `42-preview`
 # pointing into a bucket that still holds `pr-42/` serves an old build of
 # closed work at a public, guessable URL, indefinitely. (The worker sets
 # noindex, so it will not be in search results — but it is still reachable by
@@ -49,7 +49,7 @@ jobs:
           zone=$(cf "https://api.cloudflare.com/client/v4/zones?name=bullmoose.cc" \
                   | tr -d ' \n' | grep -oE '"id":"[0-9a-f]{32}"' | head -1 | cut -d'"' -f4)
           [ -n "$zone" ] || { echo "::error::could not resolve zone id"; exit 1; }
-          host="preview-${PR}.bullmoose.cc"
+          host="${PR}-preview.bullmoose.cc"
           id=$(cf "https://api.cloudflare.com/client/v4/zones/$zone/dns_records?name=$host" \
                 | tr -d ' \n' | grep -oE '"id":"[0-9a-f]{32}"' | head -1 | cut -d'"' -f4)
           if [ -z "$id" ]; then
