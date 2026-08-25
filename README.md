@@ -196,8 +196,9 @@ webmail itself (uploaded to R2 and served by a worker). Nothing shells out;
 there is no step at the end that hands you back to a package manager.
 
 ```sh
-# 1. get the binary (docs/install-cli.md has checksums + platform notes)
-curl -fsSL https://dl.bullmoose.cc/cli/latest.txt          # the current version
+# 1. get the binary — detects your platform, verifies the checksum, installs
+#    nothing if that fails (docs/install-cli.md for by-hand + platform notes)
+curl -fsSL https://dl.bullmoose.cc/cli/install.sh | sh
 
 # 2. see EXACTLY what would happen — read-only, nothing is created
 export CLOUDFLARE_API_TOKEN=…            # scopes: docs/install-cloud.md

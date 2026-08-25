@@ -123,10 +123,19 @@ jobs:
           for f in dist/bullmoose_* dist/checksums.txt; do
             put "cli/$VERSION/$(basename "$f")" "$f"
           done
-          # latest.txt LAST — the pointer flips only once its targets exist.
+          # The installer is re-uploaded every release, from the tag being
+          # released — so the script serving at the documented URL is always
+          # the one that shipped with a real build, never a stale copy of
+          # itself. It reads latest.txt at run time, so it does not hardcode
+          # the version it was published beside.
+          put "cli/install.sh" cli-go/deploy/install.sh "text/x-shellscript"
+          # latest.txt LAST — the pointer flips only once its targets exist,
+          # INCLUDING the installer above: a stranger who curls install.sh the
+          # instant the pointer moves must find every file it will ask for.
           printf '%s' "$VERSION" > latest.txt
           put "cli/latest.txt" latest.txt "text/plain"
           echo "mirrored: https://dl.bullmoose.cc/cli/$VERSION/"
+          echo "installer: https://dl.bullmoose.cc/cli/install.sh"
 
       # Dry runs keep their artifacts too — that is what makes them a rehearsal
       # rather than a log to squint at.
