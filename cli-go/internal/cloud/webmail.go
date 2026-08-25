@@ -140,7 +140,7 @@ func (c *CF) putR2Object(acct, bucket, key string, body []byte, contentType stri
  * workflow that computes a prefix, so it is refused here rather than
  * documented as a caution.
  */
-func PruneWebmailPrefix(cf *CF, acct, bucket, prefix string, log func(string)) (int, error) {
+func PruneSitePrefix(cf *CF, acct, bucket, prefix string, log func(string)) (int, error) {
 	if strings.TrimSpace(prefix) == "" {
 		return 0, fmt.Errorf("prune needs a non-empty --prefix: an empty one would delete every object in %s", bucket)
 	}
@@ -312,10 +312,28 @@ func uploadWebmail(cf *CF, acct, bucket string, targz []byte, log func(string)) 
  * which is the failure this repo keeps rediscovering. Same rules, same bytes,
  * two front doors.
  */
-func UploadWebmailDir(cf *CF, acct, bucket, dir, prefix string, log func(string)) (int, error) {
-	assets, err := webmailAssetsFromDir(dir)
+func UploadSiteDir(cf *CF, acct, bucket, dir, prefix string, log func(string)) (int, error) {
+	assets, err := siteAssetsFromDir(dir)
 	if err != nil {
 		return 0, err
+	}
+	// `_redirects` and `_headers` are CONSUMED here, not uploaded: they are
+	// configuration for the host, and publishing them would hand a reader the
+	// list of paths you thought were retired. A syntax error fails the push
+	// with a file and line, which is the whole reason this happens at push
+	// time rather than in the worker.
+	assets, routing, err := compileRouting(assets)
+	if err != nil {
+		return 0, err
+	}
+	if !routing.empty() {
+		blob, err := json.Marshal(routing)
+		if err != nil {
+			return 0, err
+		}
+		assets = append(assets, Asset{Key: RoutingKey, Body: blob})
+		log(fmt.Sprintf("routing: %d redirect(s), %d header rule(s) compiled to %s",
+			len(routing.Redirects), len(routing.Headers), RoutingKey))
 	}
 	if prefix != "" {
 		// Normalized here rather than trusted from the caller: `pr-7` and
@@ -335,7 +353,7 @@ func UploadWebmailDir(cf *CF, acct, bucket, dir, prefix string, log func(string)
 // tarball path produces. Symlinks and irregular files are skipped rather than
 // followed: a static build is regular files, and following a link out of the
 // tree would upload something the build never meant to publish.
-func webmailAssetsFromDir(dir string) ([]Asset, error) {
+func siteAssetsFromDir(dir string) ([]Asset, error) {
 	var assets []Asset
 	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -404,6 +422,6 @@ func uploadAssets(cf *CF, acct, bucket string, assets []Asset, log func(string))
 			return i, fmt.Errorf("uploading %s (%d of %d): %w", a.Key, i+1, len(assets), err)
 		}
 	}
-	log(fmt.Sprintf("webmail: %d files uploaded to r2://%s", len(assets), bucket))
+	log(fmt.Sprintf("%d files uploaded to r2://%s", len(assets), bucket))
 	return len(assets), nil
 }

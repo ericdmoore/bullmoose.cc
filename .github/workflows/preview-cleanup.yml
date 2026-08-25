@@ -67,4 +67,4 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: go run . cloud webmail prune --bucket bullmoose-webmail-preview --prefix "pr-${PR}"
+        run: go run . cloud site prune --bucket bullmoose-webmail-preview --prefix "pr-${PR}"

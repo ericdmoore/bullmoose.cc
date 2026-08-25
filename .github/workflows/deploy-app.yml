@@ -67,7 +67,7 @@ jobs:
           # with). BULLMOOSE_SITE_DEPLOY_TOKEN cannot write objects.
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: go run . cloud webmail push --dir ../webmail/dist
+        run: go run . cloud site push --dir ../webmail/dist
 
       # The name must EXIST and be PROXIED for the worker routes to fire at
       # all -- a route binds paths on a hostname that already resolves through
