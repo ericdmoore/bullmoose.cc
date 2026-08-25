@@ -150,3 +150,32 @@ jobs:
       # infra/bootstrap.mjs DEPLOY_ORDER and docs/DEPLOY.md §2 as well —
       # tracked separately as .feedback/fromClaude/infra/013, since wiring it
       # needs its own resource/secret story rather than one more step.
+
+      # ⚠️ DOES IT ACTUALLY DELIVER? — the empirical half of the gate.
+      #
+      # The `blockers` step above catches failures somebody PREDICTED: a
+      # migration marked `blocks: "deploy"`. That is worth having, and it is
+      # not enough. Had the 2026-08-24 migration not carried its marker, the
+      # gate would have passed and mail would still have bounced for fourteen
+      # hours.
+      #
+      # This predicts nothing. It sends a message to itself and waits for it
+      # to arrive — submit → SES → the internet → Cloudflare Email Routing →
+      # ingest → mailbox — and fails the run that caused the breakage, while
+      # whoever ran it is still watching. It does not care WHY delivery is
+      # broken, which is the property the gate above cannot have.
+      #
+      # It runs AFTER the workers ship, on purpose: it is testing what was
+      # just deployed. A red run here means the deploy landed and delivery is
+      # broken — the workers are already out, so read it as an alarm, not as a
+      # failed deploy.
+      #
+      # Token-only: no browser, no passkey, no human. Needs a dedicated smoke
+      # account (never a person's real mailbox — this creates and destroys
+      # messages).
+      - name: Does mail actually deliver?
+        env:
+          BULLMOOSE_SMOKE_BASE: https://app.bullmoose.cc
+          BULLMOOSE_SMOKE_TOKEN: ${{ secrets.BULLMOOSE_SMOKE_TOKEN }}
+          BULLMOOSE_SMOKE_ADDRESS: ${{ secrets.BULLMOOSE_SMOKE_ADDRESS }}
+        run: node tools/smoke-mail.mjs

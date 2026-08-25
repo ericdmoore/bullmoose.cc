@@ -216,6 +216,13 @@ export async function creationOptions(
     //
     // "required" moves the refusal to enrollment, which is the honest moment:
     // a human is present, and can reach for a different authenticator.
+    //
+    // Found with a CDP virtual authenticator (hasResidentKey: false), which
+    // reproduced it exactly. That harness is not kept — the ceremony is a
+    // human ritual by design and a browser suite is a lot of machinery for one
+    // flow — so the coupling it revealed is pinned in webauthn.test.ts
+    // instead: these two functions must agree, and they are four hundred
+    // lines apart.
     authenticatorSelection: { residentKey: "required", requireResidentKey: true, userVerification: "preferred" },
   };
 }

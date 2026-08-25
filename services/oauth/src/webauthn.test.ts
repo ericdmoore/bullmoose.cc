@@ -297,3 +297,39 @@ describe("verifyAssertion — a real key, a real signature, real refusals", () =
     expect(alg).toBe(-7);
   });
 });
+
+describe("registration and assertion must agree about discoverability", () => {
+  // These two functions are ~200 lines apart and silently coupled. The bug
+  // this pins: creationOptions asked for `residentKey: "preferred"`, which
+  // lets an authenticator answer with a SERVER-SIDE credential — while
+  // assertionOptions sends `allowCredentials: []`, which can only ever find a
+  // DISCOVERABLE one.
+  //
+  // The failure that produces is the worst shape available: enrollment
+  // SUCCEEDS, every other test passes (they hand a constructed assertion
+  // straight to the verifier and never ask a browser to find anything), and
+  // then that person can neither complete a ceremony NOR LOG IN — silently,
+  // permanently, and only them. It was found with a real browser; this is what
+  // keeps it found.
+  it("assertion asks the browser to find the credential unaided", async () => {
+    const { env } = await assertWorld();
+    const opts = (await assertionOptions(env, "login")) as { allowCredentials?: unknown[] };
+    expect(
+      opts.allowCredentials,
+      "if this ever gets populated, the residentKey requirement below can relax — until then it cannot",
+    ).toEqual([]);
+  });
+
+  it("so registration REQUIRES a discoverable credential, not merely prefers one", async () => {
+    const { env } = await assertWorld();
+    const opts = (await creationOptions(env, { id: "prin_x", email: "x@test.local" })) as {
+      authenticatorSelection?: { residentKey?: string; requireResidentKey?: boolean };
+    };
+    expect(
+      opts.authenticatorSelection?.residentKey,
+      'residentKey "preferred" lets an authenticator create a credential that assertionOptions can never find',
+    ).toBe("required");
+    // The legacy sibling of the same flag; older authenticators read this one.
+    expect(opts.authenticatorSelection?.requireResidentKey).toBe(true);
+  });
+});

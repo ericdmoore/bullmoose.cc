@@ -22,9 +22,6 @@ node tools/e2e-punchlist.mjs   # himalaya punch list: Mailbox/query, Email/impor
 node tools/e2e-contacts.mjs    # JMAP Contacts (RFC 9610): books, cards, query, ctag cascade
 node tools/e2e-grants.mjs      # Phase 3: sharing, delegation, vault, analytics MCP (3 workers)
 node tools/e2e-carddav.mjs     # Phase 2: anglebrackets CardDAV (jmap :8787 + anglebrackets :8791)
-node tools/e2e-ceremony.mjs     # the passkey tea ceremony in a REAL browser (oauth :8790, TLS)
-                               # needs: cd services/oauth && npx wrangler dev --port 8790 --local-protocol https
-                               # CDP virtual authenticator = no thumbs; the seam is in the browser, never the server
 node tools/e2e-calendar.mjs    # Phase 4: JSCalendar core — recurrence/DST/overrides/queries
 node tools/e2e-caldav.mjs      # Phase 5: anglebrackets CalDAV — iCalendar, time-range, sync
 ```
