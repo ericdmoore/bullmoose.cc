@@ -3,35 +3,26 @@ name: Deploy app
 # The bullmoose app surface (webmail/, Astro) at app.bullmoose.cc.
 # Plan: .plans/s07-app-surface/devPlan.md.
 #
-# SERVED FROM R2, NOT PAGES (#368/#369). The build is uploaded to the
-# `bullmoose-webmail` bucket and served by services/webhost. Pages is still
-# deployed below as a live rollback during the transition, but it is no longer
-# what answers: worker routes beat Pages on a shared hostname, so webhost's
-# `app.bullmoose.cc/*` wins every path jmap does not claim.
+# SERVED FROM R2 (#368/#369/#371). The build is uploaded to the
+# `bullmoose-webmail` bucket and served by services/webhost. Cloudflare Pages
+# is gone entirely — production here, previews in preview-app.yml — and with
+# it the `bullmoose-app` project, its custom-domain attach, and the
+# `Cloudflare Pages: Edit` scope on BULLMOOSE_SITE_DEPLOY_TOKEN.
 #
 # SAME-ORIGIN BY DESIGN. The API is not a separate host: services/jmap owns
-# `app.bullmoose.cc/{api/*, auth/*, .well-known/jmap, console/*, share/*}` via Worker
-# routes, and webhost serves everything else. Routes match most-specific-first,
-# so the two coexist on one name.
+# `app.bullmoose.cc/{api/*, auth/*, .well-known/jmap, console/*, share/*}` via
+# Worker routes, and webhost serves everything else. Routes match
+# most-specific-first, so the two coexist on one name.
 #
-# That is not a convenience. The alternative — Pages on app., the worker on
+# That is not a convenience. The alternative — the app on app., the worker on
 # api. — makes every request cross-origin, and services/jmap sends NO CORS
 # headers and has NO OPTIONS handler (`services/jmap/src/index.ts`), so every
 # browser call would die at preflight before reaching the worker. Same-origin
 # means there is no CORS surface to get wrong, no preflight latency, and no
 # origin boundary for a credential to cross.
 #
-# Prereqs (one-time, human):
-#   1. First run creates the `bullmoose-app` Pages project (direct upload).
-#      Then map app.bullmoose.cc to it in the Pages dashboard.
-#   2. Reuses BULLMOOSE_SITE_DEPLOY_TOKEN. A token scoped
-#      "Account > Cloudflare Pages: Edit" covers every Pages project in the
-#      account, so a SECOND project needs no new token and no widening. If a
-#      run 403s, that assumption was wrong — widen that one token rather than
-#      minting another.
-#   3. The Worker routes ship with deploy-mail.yml (BULLMOOSE_RUNTIME_TOKEN),
-#      NOT with this workflow. Deploy the worker first, or /api/* 404s into
-#      Pages and the app looks broken while the login page works.
+# The worker ROUTES ship with deploy-mail.yml (BULLMOOSE_RUNTIME_TOKEN), not
+# with this workflow. This one only refreshes the bytes they serve.
 
 on:
   push:
@@ -48,7 +39,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      deployments: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -59,123 +49,43 @@ jobs:
       # thing that catches a CSP/hydration break -- `astro build` succeeding
       # while the page renders empty is the s03.C failure mode.
       - run: npm run -w webmail build
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli-go/go.mod
+          cache-dependency-path: cli-go/go.sum
 
-      # ---- R2: what actually serves app.bullmoose.cc (#369) ----
-      #
-      # The same bytes go to BOTH destinations during the transition. R2 +
-      # services/webhost is what serves the site; the Pages deploy below is
-      # kept as a live rollback -- delete the webhost route and Pages is
-      # already current, no rebuild needed. Removing Pages is #369 step 6.
-      #
       # This shells out to the CLI rather than looping `wrangler r2 object
       # put` in bash, because the upload has RULES -- the content-type table,
       # the escaping that keeps `_astro/app.js` two key segments, the refusal
       # to publish a build with no index.html -- and a bash copy would own its
       # own version of each and drift from the installer's silently. One
-      # implementation, two front doors (internal/cloud/webmail.go).
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: cli-go/go.mod
-          cache-dependency-path: cli-go/go.sum
+      # implementation, three front doors (internal/cloud/webmail.go).
       - name: Push the webmail to R2
         working-directory: cli-go
         env:
           # The R2-capable token (the same one release-stack.yml publishes
-          # with). BULLMOOSE_SITE_DEPLOY_TOKEN is Pages-scoped and cannot
-          # write objects.
+          # with). BULLMOOSE_SITE_DEPLOY_TOKEN cannot write objects.
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: go run . cloud webmail push --dir ../webmail/dist
 
-      # `pages deploy` does NOT create a missing project -- it fails with
-      # "Maybe you intended to deploy a Worker project instead?", which reads
-      # like a config mistake rather than a missing prerequisite. (deploy.yml's
-      # comment claims "first run creates the project"; that was true of an
-      # older wrangler and is not true now -- corrected there too.) Creating it
-      # here keeps the workflow the single source of truth instead of a
-      # dashboard step someone has to know about.
-      - name: Ensure the Pages project exists
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_SITE_DEPLOY_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          out=$(npx wrangler pages project create bullmoose-app \
-                  --production-branch=main 2>&1) || true
-          echo "$out"
-          # Idempotent: a second run is expected to collide, and that is success.
-          # Anything else must fail loudly rather than deploying into the dark.
-          if echo "$out" | grep -qiE "already exists|8000007"; then
-            echo "project already exists — continuing"
-          elif echo "$out" | grep -qiE "Successfully created|✨"; then
-            echo "project created"
-          else
-            echo "::error::could not ensure the Pages project exists"; exit 1
-          fi
-
-      # Attaching the custom domain is what CREATES the DNS record for
-      # app.bullmoose.cc. The Worker routes cannot do it: a `routes` pattern
-      # with zone_name binds paths on a hostname that must ALREADY resolve
-      # through Cloudflare — unlike `custom_domain: true`, which does provision
-      # DNS. Deploy the routes without this and every path returns nothing at
-      # all, because the name does not exist. (docs/DEPLOY.md said otherwise;
-      # corrected there.)
+      # The name must EXIST and be PROXIED for the worker routes to fire at
+      # all -- a route binds paths on a hostname that already resolves through
+      # Cloudflare. What it points AT is irrelevant, because webhost's
+      # `app.bullmoose.cc/*` intercepts every path before anything reaches an
+      # origin. So this ensures a placeholder, and never a real target.
       #
-      # Once the name resolves to Pages, the Worker routes take precedence on
-      # their four path patterns and Pages serves the rest — one origin, no CORS.
-      - name: Ensure app.bullmoose.cc is attached
-        env:
-          TOKEN: ${{ secrets.BULLMOOSE_SITE_DEPLOY_TOKEN }}
-          ACCT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          base="https://api.cloudflare.com/client/v4/accounts/$ACCT/pages/projects/bullmoose-app/domains"
-          # NOTE the whitespace-insensitive match. The first version grepped
-          # '"name":"app.bullmoose.cc"' against pretty-printed JSON, never
-          # matched, and re-POSTed a domain that was already attached — then
-          # treated Cloudflare's "you have already added this" as a failure.
-          list=$(curl -sS -m 20 -H "Authorization: Bearer $TOKEN" "$base")
-          if printf '%s' "$list" | tr -d ' \n' | grep -q '"name":"app.bullmoose.cc"'; then
-            echo "app.bullmoose.cc already attached"
-          else
-            r=$(curl -sS -m 30 -X POST -H "Authorization: Bearer $TOKEN" \
-                  -H "content-type: application/json" \
-                  -d '{"name":"app.bullmoose.cc"}' "$base")
-            # 8000018 = already added. Idempotent runs must treat that as success.
-            if printf '%s' "$r" | grep -q '"success":true'; then echo "attached"
-            elif printf '%s' "$r" | grep -q '8000018'; then echo "already attached (per API)"
-            else echo "::error::could not attach domain"; printf '%s' "$r" | head -c 400; exit 1; fi
-          fi
-
-          # Attaching is not the same as SERVING. Pages verifies the domain and
-          # provisions DNS asynchronously, and a domain can sit attached with no
-          # record — which looks identical from the outside to "never added".
-          # Print the status so the difference is visible.
-          # A domain can sit `pending` indefinitely: Pages stages the record and
-          # waits to verify, and until it activates the authoritative NS answers
-          # NXDOMAIN even though the API lists a correct CNAME. PATCH re-triggers
-          # verification, which is the documented nudge and is safe to repeat.
-          if printf '%s' "$list" | tr -d ' \n' | grep -q '"status":"pending"'; then
-            echo "domain is pending — re-triggering verification"
-            curl -sS -m 25 -X PATCH -H "Authorization: Bearer $TOKEN" \
-              -H "content-type: application/json" -d '{}' \
-              "$base/app.bullmoose.cc" | tr ',' '\n' \
-              | grep -oE '"(status|code|message)":[^,}]*' | sed 's/^/    /' | head -6
-          fi
-
-          echo "── custom domain status ──"
-          curl -sS -m 20 -H "Authorization: Bearer $TOKEN" "$base" \
-            | tr ',' '\n' | grep -oE '"(name|status|verification_data|certificate_authority)":[^,}]*' \
-            | sed 's/^/  /' | head -12
-
-      # Pages reports the domain `pending` until a DNS record points at it, and
-      # it did not create one — so this closes the loop. Uses the RUNTIME token
-      # because DNS:Edit lives there, not on the Pages token.
-      #
-      # ⚠️ proxied MUST be true. A grey-cloud record resolves straight to the
-      # origin and never enters Cloudflare's edge, so the jmap Worker routes
-      # would never fire and every /api/* path would fall through to Pages —
-      # the same 404-as-HTML failure the routes exist to prevent, arrived at
-      # from the other direction.
-      - name: Ensure the app DNS record exists
+      # ⚠️ It also actively REPLACES the old `CNAME app -> bullmoose-app.pages.dev`.
+      # With the Pages project deleted, that CNAME dangles: `bullmoose-app.pages.dev`
+      # becomes claimable by anyone who creates a project of that name in their
+      # own account, and our record would then point at their content. The
+      # worker route means nothing would actually serve it today -- but a
+      # dangling CNAME to a claimable third-party host is a subdomain takeover
+      # waiting for one future route change. `AAAA 100::` is the IPv6 discard
+      # prefix: it cannot be anyone's server, ever. (Same shape the installer
+      # writes for worker-served names -- cli-go/internal/cloud/plan.go's
+      # dnsOurs -- so production and a fresh install now agree.)
+      - name: Ensure app.bullmoose.cc resolves to a proxied placeholder
         env:
           TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
         run: |
@@ -184,23 +94,27 @@ jobs:
           zone=$(cf "https://api.cloudflare.com/client/v4/zones?name=bullmoose.cc" \
                   | tr -d ' \n' | grep -oE '"id":"[0-9a-f]{32}"' | head -1 | cut -d'"' -f4)
           [ -n "$zone" ] || { echo "::error::could not resolve zone id for bullmoose.cc"; exit 1; }
-
           recs="https://api.cloudflare.com/client/v4/zones/$zone/dns_records"
+          body='{"type":"AAAA","name":"app","content":"100::","proxied":true,"comment":"s07 app surface — webhost + jmap Worker routes share this origin"}'
+
           existing=$(cf "$recs?name=app.bullmoose.cc" | tr -d ' \n')
-          if printf '%s' "$existing" | grep -q '"name":"app.bullmoose.cc"'; then
-            echo "DNS record already exists:"
-            printf '%s' "$existing" | tr ',' '\n' \
-              | grep -oE '"(type|content|proxied)":[^,}]*' | sed 's/^/  /' | head -3
-          else
-            r=$(cf -X POST -d '{"type":"CNAME","name":"app","content":"bullmoose-app.pages.dev","proxied":true,"comment":"s07 app surface — Pages + jmap Worker routes share this origin"}' "$recs")
+          id=$(printf '%s' "$existing" | grep -oE '"id":"[0-9a-f]{32}"' | head -1 | cut -d'"' -f4)
+          if [ -z "$id" ]; then
+            r=$(cf -X POST -d "$body" "$recs")
             printf '%s' "$r" | grep -q '"success":true' \
-              && echo "created app.bullmoose.cc → bullmoose-app.pages.dev (proxied)" \
-              || { echo "::error::could not create DNS record"; printf '%s' "$r" | head -c 400; exit 1; }
+              && echo "created app.bullmoose.cc -> AAAA 100:: (proxied)" \
+              || { echo "::error::could not create the app record"; printf '%s' "$r" | head -c 400; exit 1; }
+          elif printf '%s' "$existing" | grep -q '"content":"100::"' && printf '%s' "$existing" | grep -q '"proxied":true'; then
+            echo "app.bullmoose.cc is already a proxied placeholder"
+          else
+            # PUT replaces the record in place, so the name never stops
+            # resolving -- a delete-then-create would blink the whole app.
+            r=$(cf -X PUT -d "$body" "$recs/$id")
+            printf '%s' "$r" | grep -q '"success":true' \
+              && echo "replaced the app record with AAAA 100:: (proxied)" \
+              || { echo "::error::could not replace the app record"; printf '%s' "$r" | head -c 400; exit 1; }
           fi
 
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.BULLMOOSE_SITE_DEPLOY_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy webmail/dist --project-name=bullmoose-app --branch=main
+          echo "── app.bullmoose.cc ──"
+          cf "$recs?name=app.bullmoose.cc" | tr ',' '\n' \
+            | grep -oE '"(type|content|proxied)":[^,}]*' | sed 's/^/  /' | head -3

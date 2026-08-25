@@ -25,15 +25,17 @@
 //   schema/data-plane.sql
 //   migrations.json               infra/migrations.mjs minus the test-only
 //                                 `absent` blocks — what `cloud update` runs
-//   webmail.tar.gz                the built Astro output for Pages
+//   webmail.tar.gz                the built Astro output, uploaded to R2 and
+//                                 served by services/webhost
 //
 // Deliberately NOT shipped:
 //   - sourcemaps. The bundles are public by decision (that is what lets a
 //     stranger run the stack); the .map files embed the repo's full source
 //     text via sourcesContent, which is a different decision nobody made.
-//   - services/demo-keys. Absent from DEPLOY_ORDER on purpose — see
-//     .feedback/fromClaude/infra/013. The manifest names the exclusion so a
-//     reader of dl.bullmoose.cc learns it there, not by diffing services/.
+//   - services/demo-keys and services/webpreview. Absent from DEPLOY_ORDER on
+//     purpose; NOT_INCLUDED below is the registry, and the manifest carries it
+//     so a reader of dl.bullmoose.cc learns the exclusions there rather than
+//     by diffing services/ against deployOrder.
 
 import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs";
@@ -44,6 +46,22 @@ import { DEPLOY_ORDER, EXTERNAL, GENERATED } from "./bootstrap.mjs";
 import { MIGRATIONS } from "./migrations.mjs";
 
 const ROOT = join(import.meta.dirname, "..");
+
+/**
+ * Workers that exist in services/ and are deliberately NOT part of the
+ * published stack, each with the reason a stranger would want.
+ *
+ * Kept as an explicit registry rather than a comment because
+ * infra/servicesAccountedFor.test.ts asserts every services/*\/wrangler.jsonc
+ * is either in DEPLOY_ORDER or named here. A new worker that is in neither is
+ * the shape that goes unnoticed: it works locally, ships to nobody, and
+ * nothing says so.
+ */
+export const NOT_INCLUDED = {
+  "demo-keys": "absent from DEPLOY_ORDER; needs its own resource/secret story (.feedback/fromClaude/infra/013)",
+  webpreview:
+    "this repository's review tooling, not product — it serves pull-request previews on preview-*.bullmoose.cc, and an install has no pull requests to preview (ships from .github/workflows/deploy-webpreview.yml)",
+};
 const DOWNLOAD_BASE = "https://dl.bullmoose.cc/stack";
 
 /**
@@ -92,9 +110,7 @@ export function buildManifest({ version, gitSha, deployOrder, files, migrationCo
     migrations: { file: "migrations.json", count: migrationCount },
     secrets: { generated, external },
     webmail: "webmail.tar.gz",
-    notIncluded: {
-      "demo-keys": "absent from DEPLOY_ORDER; needs its own resource/secret story (.feedback/fromClaude/infra/013)",
-    },
+    notIncluded: NOT_INCLUDED,
     files,
     _links: {
       self: { href: `${DOWNLOAD_BASE}/${version}/manifest.json` },

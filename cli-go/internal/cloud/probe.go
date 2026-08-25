@@ -157,6 +157,56 @@ func (c *CF) getJSON(path string, into any) error {
 	return json.Unmarshal(env.Result, into)
 }
 
+/**
+ * getJSONWithInfo is getJSON plus the paging cursor out of `result_info`.
+ *
+ * Separate from getJSON because every other call in this package reads a list
+ * that fits in one response and would rather not think about pages; only the
+ * R2 object listing can exceed 1000 entries. `*cursor` comes back empty when
+ * the last page has been read, which is the loop's termination condition.
+ */
+func (c *CF) getJSONWithInfo(path string, into *json.RawMessage, cursor *string) error {
+	req, err := http.NewRequest(http.MethodGet, c.Base+path, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	res, err := c.HTTP.Do(req)
+	if err != nil {
+		return fmt.Errorf("GET %s: %w", path, err)
+	}
+	defer res.Body.Close()
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return err
+	}
+	if res.StatusCode == http.StatusForbidden || res.StatusCode == http.StatusUnauthorized {
+		return errDenied{path: path}
+	}
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("GET %s: HTTP %d", path, res.StatusCode)
+	}
+	var env struct {
+		cfEnvelope
+		ResultInfo struct {
+			Cursor string `json:"cursor"`
+		} `json:"result_info"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		return fmt.Errorf("GET %s: not a Cloudflare envelope: %w", path, err)
+	}
+	if !env.Success {
+		msg := "unknown error"
+		if len(env.Errors) > 0 {
+			msg = env.Errors[0].Message
+		}
+		return fmt.Errorf("GET %s: %s", path, msg)
+	}
+	*cursor = env.ResultInfo.Cursor
+	*into = env.Result
+	return nil
+}
+
 // Probe runs the read-only sweep. The token being dead and the zone being
 // absent are ERRORS (nothing downstream is answerable); a partial-permission
 // token is a RESULT, with the gaps in Denied.
