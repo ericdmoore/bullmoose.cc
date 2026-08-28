@@ -80,6 +80,14 @@ web_modules/
 .env.test.local
 .env.production.local
 .env.local
+# ...and any BACKUP of one. `.env` matches exactly, so a timestamped copy
+# (.env.bak-20260821-123905) was untracked AND unignored -- one `git add -A`
+# from being staged, holding live CF/SES/vault credentials. Found 2026-08-24.
+.env.bak*
+.env.*.bak
+.env.backup*
+.env.save
+.env.orig
 
 # local scratch (agent feedback, notes)
 _scratch/

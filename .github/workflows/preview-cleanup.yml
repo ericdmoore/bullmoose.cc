@@ -1,0 +1,70 @@
+name: Clean up preview
+
+# When a PR closes, take its preview with it (#371).
+#
+# Pages did this implicitly — deployments belonged to the project and aged out
+# on their own. R2 objects and DNS records do not: without this, every PR ever
+# opened leaves a permanent hostname resolving to a build of a branch that no
+# longer exists, and a bucket that only grows.
+#
+# The DNS record is the part that actually matters. A stale `42-preview`
+# pointing into a bucket that still holds `pr-42/` serves an old build of
+# closed work at a public, guessable URL, indefinitely. (The worker sets
+# noindex, so it will not be in search results — but it is still reachable by
+# anyone who saw the PR.)
+#
+# Runs on `closed`, which covers both merged and abandoned.
+
+on:
+  pull_request:
+    types: [closed]
+
+jobs:
+  cleanup:
+    name: Remove the preview
+    runs-on: ubuntu-latest
+    # Same reason as preview-app.yml: forks never had the secrets, so they
+    # never created anything to remove.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: cli-go/go.mod
+          cache-dependency-path: cli-go/go.sum
+
+      # Ordered so the failure modes are the survivable ones. DNS first: once
+      # the name stops resolving the preview is unreachable, which is the
+      # point. If the prune then fails, the leftover is orphaned objects
+      # nobody can address; if this order were reversed, a prune failure would
+      # leave a live hostname serving a half-deleted site.
+      - name: Stop the hostname resolving
+        env:
+          TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
+        run: |
+          cf() { curl -sS -m 25 -H "Authorization: Bearer $TOKEN" \
+                   -H "content-type: application/json" "$@"; }
+          zone=$(cf "https://api.cloudflare.com/client/v4/zones?name=bullmoose.cc" \
+                  | tr -d ' \n' | grep -oE '"id":"[0-9a-f]{32}"' | head -1 | cut -d'"' -f4)
+          [ -n "$zone" ] || { echo "::error::could not resolve zone id"; exit 1; }
+          host="${PR}-preview.bullmoose.cc"
+          id=$(cf "https://api.cloudflare.com/client/v4/zones/$zone/dns_records?name=$host" \
+                | tr -d ' \n' | grep -oE '"id":"[0-9a-f]{32}"' | head -1 | cut -d'"' -f4)
+          if [ -z "$id" ]; then
+            # Expected whenever a PR never touched webmail/, so it is not a
+            # failure — most PRs never get a preview at all.
+            echo "$host has no record — nothing to remove"
+          else
+            cf -X DELETE "https://api.cloudflare.com/client/v4/zones/$zone/dns_records/$id" \
+              | grep -q '"success":true' && echo "removed $host" \
+              || { echo "::error::could not remove $host"; exit 1; }
+          fi
+
+      - name: Prune this PR's objects
+        working-directory: cli-go
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: go run . cloud site prune --bucket bullmoose-webmail-preview --prefix "pr-${PR}"

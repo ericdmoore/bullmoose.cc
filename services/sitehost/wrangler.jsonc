@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bullmoose-sitehost",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+
+  // The apex only. `www` is deliberately absent: the zone has no www record
+  // today, and a route for a hostname that does not resolve is a line that
+  // looks like coverage and provides none. Add both together or neither.
+  //
+  // This is least-specific on its hostname, so anything more specific we ever
+  // add there keeps winning — the same arrangement webhost has under jmap on
+  // app.bullmoose.cc.
+  //
+  // The apex record must exist and be PROXIED for this to fire; a route binds
+  // paths on a hostname that already resolves through Cloudflare. deploy.yml
+  // ensures it as a proxied `AAAA 100::` placeholder.
+  "routes": [{ "pattern": "bullmoose.cc/*", "zone_name": "bullmoose.cc" }],
+
+  "r2_buckets": [{ "binding": "SITE", "bucket_name": "bullmoose-site" }],
+
+  "observability": { "enabled": true }
+}

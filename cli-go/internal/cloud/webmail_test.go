@@ -8,6 +8,8 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -117,7 +119,7 @@ func TestWebmailAssetsFromDir_WalksAndKeepsHierarchy(t *testing.T) {
 	mustWrite(t, dir, "_astro/app.js", "console.log(1)")
 	mustWrite(t, dir, "settings/index.html", "<p>settings</p>")
 
-	assets, err := webmailAssetsFromDir(dir)
+	assets, err := siteAssetsFromDir(dir)
 	if err != nil {
 		t.Fatalf("expand: %v", err)
 	}
@@ -142,14 +144,14 @@ func TestWebmailAssetsFromDir_RefusesABuildWithNoEntryPoint(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, dir, "_astro/app.js", "console.log(1)")
 
-	_, err := webmailAssetsFromDir(dir)
+	_, err := siteAssetsFromDir(dir)
 	if err == nil || !strings.Contains(err.Error(), "index.html") {
 		t.Fatalf("a build with no index.html must be refused by name, got %v", err)
 	}
 }
 
 func TestWebmailAssetsFromDir_RefusesAnEmptyDirWithABuildHint(t *testing.T) {
-	_, err := webmailAssetsFromDir(t.TempDir())
+	_, err := siteAssetsFromDir(t.TempDir())
 	// "contained no files" alone reads like a bug in the uploader; the
 	// overwhelmingly likely cause is that nobody ran the build.
 	if err == nil || !strings.Contains(err.Error(), "build") {
@@ -187,4 +189,64 @@ func keysOf(m map[string]string) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// ---- prefixes: one bucket, many builds ----
+
+func TestPrune_RefusesAnEmptyPrefixWithoutCallingAnything(t *testing.T) {
+	// The dangerous shape: a workflow computes `--prefix pr-$PR` and $PR is
+	// unset. An empty prefix matches every key, so "prune the closed PR"
+	// would become "delete the site". It must refuse BEFORE any request.
+	called := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	cf := NewCF(srv.URL, "t", srv.Client())
+
+	for _, prefix := range []string{"", "   "} {
+		n, err := PruneSitePrefix(cf, "acct", "bucket", prefix, func(string) {})
+		if err == nil {
+			t.Fatalf("prefix %q must be refused", prefix)
+		}
+		if n != 0 {
+			t.Errorf("refused prune reported %d deletions", n)
+		}
+		if !strings.Contains(err.Error(), "every object") {
+			t.Errorf("the refusal should say what it would have destroyed, got %v", err)
+		}
+	}
+	if called {
+		t.Error("an empty-prefix prune reached the network — it must refuse before that")
+	}
+}
+
+func TestUploadSiteDir_PutsEveryKeyUnderThePrefix(t *testing.T) {
+	dir := t.TempDir()
+	mustWrite(t, dir, "index.html", "<!doctype html>")
+	mustWrite(t, dir, "_astro/app.js", "console.log(1)")
+
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	cf := NewCF(srv.URL, "t", srv.Client())
+
+	// "pr-7" without the trailing slash is the shape a workflow writes, and
+	// the one that silently produces `pr-7index.html` if nobody normalizes.
+	if _, err := UploadSiteDir(cf, "acct", "bucket", dir, "pr-7", func(string) {}); err != nil {
+		t.Fatalf("upload: %v", err)
+	}
+	joined := strings.Join(got, "\n")
+	for _, want := range []string{"/objects/pr-7/index.html", "/objects/pr-7/_astro/app.js"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("missing %s in:\n%s", want, joined)
+		}
+	}
+	if strings.Contains(joined, "pr-7index.html") {
+		t.Error("prefix was concatenated without a separator — the worker would never find these")
+	}
 }

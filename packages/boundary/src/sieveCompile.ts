@@ -51,6 +51,13 @@ export const HELD_FOLDER = "Quarantined";
 export function sieveString(s: string): string {
   // Code-point filter rather than a control-char regex: the same strip, and
   // nothing for no-control-regex to flag.
+  //
+  // no-misused-spread warns that spreading a string splits complex characters
+  // into parts. It does not apply here: the spread is IMMEDIATELY REJOINED, so
+  // the round-trip is lossless for every character the map does not touch, and
+  // the only ones it touches are ASCII control codes (< 0x20), which are never
+  // part of a surrogate pair or a ZWJ sequence.
+  // oxlint-disable-next-line typescript/no-misused-spread
   const cleaned = [...s].map((c) => (c.charCodeAt(0) < 0x20 ? " " : c)).join("");
   return `"${cleaned.replace(/[\\"]/g, (c) => `\\${c}`)}"`;
 }

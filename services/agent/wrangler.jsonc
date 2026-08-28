@@ -66,7 +66,7 @@
     "MCP_RESOURCE_URI": "https://mcp.bullmoose.cc/mcp",
     // Claude reads authorization_servers[0] and never falls back.
     "OAUTH_ISSUER": "https://auth.bullmoose.cc"
-  }
+  },
 
   // Secrets (wrangler secret put):
   //   INTERNAL_TOKEN       — shared with ingest (poke) and submit (relay)
@@ -85,4 +85,12 @@
   // Vars (set once the AI Gateway exists):
   //   GATEWAY_COMPAT_URL   — https://gateway.ai.cloudflare.com/v1/<acct>/bullmoose/compat
   //   OPENROUTER_BASE_URL  — optional; defaults to https://openrouter.ai/api/v1
+
+  // Logs. Absent from every mail worker until 2026-08-25, which is why a
+  // 14-hour inbound-mail outage had to be diagnosed from `wrangler tail` and a
+  // GraphQL analytics query instead of read from a log line. The exception was
+  // there the whole time — `D1_ERROR: no such table: ceremonies` — with nowhere
+  // to be seen. Volume here is a few hundred invocations a day, nowhere near
+  // the free plan's daily events allowance.
+  "observability": { "enabled": true }
 }

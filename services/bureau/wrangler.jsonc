@@ -30,7 +30,7 @@
       "database_name": "bullmoose-mail-shard0",
       "database_id": "c30899c2-3cce-439e-a4b0-73e8e83efee9"
     }
-  ]
+  ],
 
   // Secrets (wrangler secret put):
   //   VAULT_MASTER_KEY  — the credential-vault master secret (openssl rand -hex 32).
@@ -38,4 +38,12 @@
   //                       the isolation this whole service exists for is gone.
   //   INTERNAL_TOKEN    — shared with agent; gates /internal/* (the seal-on-mint
   //                       and health-check paths agent proxies over the binding).
+
+  // Logs. Absent from every mail worker until 2026-08-25, which is why a
+  // 14-hour inbound-mail outage had to be diagnosed from `wrangler tail` and a
+  // GraphQL analytics query instead of read from a log line. The exception was
+  // there the whole time — `D1_ERROR: no such table: ceremonies` — with nowhere
+  // to be seen. Volume here is a few hundred invocations a day, nowhere near
+  // the free plan's daily events allowance.
+  "observability": { "enabled": true }
 }

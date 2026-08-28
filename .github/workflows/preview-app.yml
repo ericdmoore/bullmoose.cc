@@ -6,28 +6,41 @@
 # the browser still has to reach them, and Eric's first attempt 404'd every
 # data request. A hosted preview sidesteps the whole question.
 #
-# It also cannot be done from a laptop: Pages deploys need
-# BULLMOOSE_SITE_DEPLOY_TOKEN, which exists only as a repository secret (the
-# runtime token that deploys Workers gets `Authentication error [code: 10000]`
-# from the Pages API). CI is the only place that holds the right key, so CI is
-# where preview deploys belong.
+# It also cannot be done from a laptop: the upload needs an R2-capable token
+# and the DNS record needs a zone token, and both exist only as repository
+# secrets. CI is where the keys are, so CI is where preview deploys belong.
 #
-# ⚠️ WHAT A PREVIEW CAN AND CANNOT SHOW. The app is same-origin with the JMAP
-# worker by design — the worker answers /api/* on app.bullmoose.cc and sends no
-# CORS headers at all (services/jmap has no OPTIONS handler; sameOrigin.test.ts
-# pins the arrangement). A *.pages.dev preview is therefore a DIFFERENT origin
-# with no API behind it: Pages falls back to index.html for /api/*, so data
-# requests resolve to HTML and every list stays empty.
+# ## The hostname (#371)
+#
+# `<pr>-preview.bullmoose.cc`, served by services/webpreview out of the
+# `bullmoose-webmail-preview` bucket under a `pr-<n>/` prefix. This replaced a
+# *.pages.dev preview when Pages left the stack.
+#
+# The shape is forced from both sides. `<n>.preview.bullmoose.cc` is a
+# multi-level wildcard and free Universal SSL covers only `*.bullmoose.cc` plus
+# the apex, so it would serve a cert error on every PR. And `preview-<n>` cannot
+# be routed at all — Cloudflare refuses any pattern whose hostname wildcard is
+# not leading ("may only contain wildcards at the beginning of the hostname",
+# API code 10022). Wildcard leads, so the number does too.
+#
+# ## ⚠️ WHAT A PREVIEW CAN AND CANNOT SHOW — unchanged by the move
+#
+# The app is same-origin with the JMAP worker by design: the worker answers
+# /api/* on app.bullmoose.cc and sends no CORS headers at all (services/jmap
+# has no OPTIONS handler; sameOrigin.test.ts pins the arrangement). A preview
+# hostname is therefore a DIFFERENT origin with no API behind it, so data
+# requests fail and every list stays empty.
+#
+# That is a SAFETY PROPERTY, not a limitation to fix later. A preview serves
+# unreviewed code from a pull request. Adding preview hostnames to the jmap
+# routes would make that code same-origin with a credentialed mail API — it
+# would run with the reviewer's live session and could read their mail. The
+# inconvenience of a preview that cannot show data is the price of previews
+# that cannot exfiltrate it.
 #
 # So a preview is good for chrome, layout, copy, and loading states — the
 # skeletons in particular are easy to study, because without data they simply
-# stay up. It cannot exercise anything that needs a mailbox.
-#
-# Making previews fully live needs a host INSIDE the zone (e.g. a preview
-# Pages project bound to preview.bullmoose.cc, with that hostname added to the
-# jmap worker routes) so the same-origin arrangement holds. Adding CORS to a
-# credentialed mail API instead would be trading a deliberate security
-# property for reviewer convenience.
+# stay up. Anything needing a mailbox is checked on app.bullmoose.cc.
 name: Preview app
 
 on:
@@ -47,13 +60,14 @@ jobs:
   preview:
     name: Build & deploy preview
     runs-on: ubuntu-latest
-    # Forks do not get the deploy secret, and a run that silently produces no
+    # Forks do not get the deploy secrets, and a run that silently produces no
     # URL is worse than one that never starts.
     if: github.event.pull_request.head.repo.full_name == github.repository
     permissions:
       contents: read
       pull-requests: write
-      deployments: write
+    env:
+      PR: ${{ github.event.pull_request.number }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,51 +75,66 @@ jobs:
           node-version: 22
       - run: npm ci
       - run: npm run -w webmail build
-
-      - name: Deploy preview
-        id: deploy
-        uses: cloudflare/wrangler-action@v3
+      - uses: actions/setup-go@v5
         with:
-          apiToken: ${{ secrets.BULLMOOSE_SITE_DEPLOY_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # `--branch` is what makes this a PREVIEW rather than production.
-          # Pages treats the production branch name (main) as a production
-          # deploy, so passing the head ref is load-bearing, not cosmetic.
-          command: >-
-            pages deploy webmail/dist
-            --project-name=bullmoose-app
-            --branch=${{ github.event.pull_request.head.ref }}
-            --commit-hash=${{ github.event.pull_request.head.sha }}
+          go-version-file: cli-go/go.mod
+          cache-dependency-path: cli-go/go.sum
+
+      # The same uploader the app and the installer use, pointed at this PR's
+      # prefix — see internal/cloud/webmail.go on why this is not a bash loop.
+      - name: Upload this PR's build
+        working-directory: cli-go
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: go run . cloud site push --dir ../webmail/dist --bucket bullmoose-webmail-preview --prefix "pr-${PR}"
+
+      # A worker route binds paths on a hostname that must ALREADY resolve
+      # through Cloudflare, so the record is a prerequisite, not decoration.
+      # `AAAA 100::` proxied is the discard-prefix placeholder this codebase
+      # already uses for worker-served names (cli-go/internal/cloud/plan.go's
+      # dnsOurs) — it cannot be anyone's real server, and being proxied is
+      # what puts the request on the edge where the worker runs.
+      - name: Ensure the preview hostname resolves
+        env:
+          TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
+        run: |
+          cf() { curl -sS -m 25 -H "Authorization: Bearer $TOKEN" \
+                   -H "content-type: application/json" "$@"; }
+          zone=$(cf "https://api.cloudflare.com/client/v4/zones?name=bullmoose.cc" \
+                  | tr -d ' \n' | grep -oE '"id":"[0-9a-f]{32}"' | head -1 | cut -d'"' -f4)
+          [ -n "$zone" ] || { echo "::error::could not resolve zone id"; exit 1; }
+          recs="https://api.cloudflare.com/client/v4/zones/$zone/dns_records"
+          host="${PR}-preview.bullmoose.cc"
+          if cf "$recs?name=$host" | tr -d ' \n' | grep -q "\"name\":\"$host\""; then
+            echo "$host already resolves"
+          else
+            r=$(cf -X POST -d "{\"type\":\"AAAA\",\"name\":\"${PR}-preview\",\"content\":\"100::\",\"proxied\":true,\"comment\":\"PR #${PR} preview — removed by preview-cleanup.yml\"}" "$recs")
+            printf '%s' "$r" | grep -q '"success":true' \
+              && echo "created $host" \
+              || { echo "::error::could not create $host"; printf '%s' "$r" | head -c 400; exit 1; }
+          fi
 
       - name: Comment the URL
         uses: actions/github-script@v7
-        env:
-          # wrangler-action exposes the deployment URL as an output; the
-          # per-commit alias it prints is the one worth linking, because the
-          # branch alias moves under you on the next push.
-          URL: ${{ steps.deploy.outputs.deployment-url }}
         with:
           script: |
-            const url = process.env.URL;
-            if (!url) {
-              core.setFailed("No deployment URL — the preview did not publish.");
-              return;
-            }
+            const pr = context.payload.pull_request;
+            const url = `https://${pr.number}-preview.bullmoose.cc`;
             const marker = "<!-- preview-app -->";
             const body =
               `${marker}\n### Preview\n\n${url}\n\n` +
-              "Commit `" + context.payload.pull_request.head.sha.slice(0, 7) + "`. " +
-              "Updated on every push to this PR.\n\n" +
-              "> **Chrome only.** The app is same-origin with the JMAP worker on " +
-              "app.bullmoose.cc, which sends no CORS headers, so a *.pages.dev origin " +
-              "has no API behind it — lists stay empty and data requests resolve to " +
-              "HTML. Good for layout, copy and loading states (the skeletons stay up, " +
-              "which makes them easy to look at). Anything needing a mailbox has to be " +
-              "checked on app.bullmoose.cc.";
+              "Commit `" + pr.head.sha.slice(0, 7) + "`. " +
+              "Updated on every push to this PR; removed when it closes.\n\n" +
+              "> **Chrome only.** A preview is a different origin from the API, so " +
+              "lists stay empty and data requests fail. That is deliberate: a preview " +
+              "runs unreviewed code, and same-origin access to the mail API would mean " +
+              "it runs with your live session. Good for layout, copy and loading states " +
+              "(the skeletons stay up, which makes them easy to look at). Anything " +
+              "needing a mailbox has to be checked on app.bullmoose.cc.";
             const { owner, repo } = context.repo;
-            const issue_number = context.payload.pull_request.number;
-            const existing = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const existing = await github.rest.issues.listComments({ owner, repo, issue_number: pr.number });
             // Update in place so a long PR does not accumulate one comment per push.
             const mine = existing.data.find((c) => c.body?.startsWith(marker));
             if (mine) await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
-            else await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            else await github.rest.issues.createComment({ owner, repo, issue_number: pr.number, body });

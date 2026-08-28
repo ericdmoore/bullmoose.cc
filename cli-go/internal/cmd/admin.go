@@ -80,8 +80,27 @@ func runAdminWith(s *bmio.Streams, argv []string, deps adminDeps) int {
 				token = boot.Token
 			}
 		}
+		// (2) INFER the URL when it is omitted. The provision worker lives at
+		// exactly one derivable address, so a machine holding a Cloudflare
+		// token needs only the admin token — and a URL nobody types is a URL
+		// nobody mistypes. An explicit --url always wins: inference is a
+		// convenience, never an override.
+		if adminURL == "" && token != "" && os.Getenv("CLOUDFLARE_API_TOKEN") != "" {
+			acct := os.Getenv("CLOUDFLARE_ACCOUNT_ID")
+			if acct == "" {
+				s.Note("note: to infer --url, set CLOUDFLARE_ACCOUNT_ID beside CLOUDFLARE_API_TOKEN")
+			} else if derived, err := provisionURLFor(acct); err != nil {
+				// Report and fall through to the usage line: a failed
+				// inference must not read as a failed init.
+				s.Note("note: could not derive the provision URL (" + err.Error() + ")")
+			} else {
+				adminURL = derived
+				s.Note("using " + adminURL + " (derived from your Cloudflare account)")
+			}
+		}
 		if adminURL == "" || token == "" {
-			s.Note("usage: bullmoose admin init --url <provision-url> --token <admin-token>")
+			s.Note("usage: bullmoose admin init --token <admin-token> [--url <provision-url>]")
+			s.Note("       --url is derived from CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID when omitted")
 			return 2
 		}
 		if err := store.SetConfig(db, "adminUrl", adminURL); err != nil {

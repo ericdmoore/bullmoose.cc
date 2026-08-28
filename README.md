@@ -196,8 +196,9 @@ webmail itself (uploaded to R2 and served by a worker). Nothing shells out;
 there is no step at the end that hands you back to a package manager.
 
 ```sh
-# 1. get the binary (docs/install-cli.md has checksums + platform notes)
-curl -fsSL https://dl.bullmoose.cc/cli/latest.txt          # the current version
+# 1. get the binary — detects your platform, verifies the checksum, installs
+#    nothing if that fails (docs/install-cli.md for by-hand + platform notes)
+curl -fsSL https://dl.bullmoose.cc/cli/install.sh | sh
 
 # 2. see EXACTLY what would happen — read-only, nothing is created
 export CLOUDFLARE_API_TOKEN=…            # scopes: docs/install-cloud.md
@@ -206,12 +207,18 @@ bullmoose cloud plan    --zone example.com
 # 3. the same plan, one honest yes, then apply
 bullmoose cloud install --zone example.com
 
-# 4. the receipt prints these, filled in
-bullmoose admin init --url https://bullmoose-provision.<subdomain>.workers.dev --token …
+# 4. install offers to connect this device — say yes and there is nothing
+#    to copy: it derived the admin URL and minted the token itself.
 bullmoose admin tenant add home
 bullmoose admin domain add example.com --tenant <tenantId>   # MX + routing + DKIM
 bullmoose cloud doctor  --zone example.com                   # did the mail path land?
 ```
+
+The admin plane is one bearer token, and the installer is the only thing
+that ever sees it: it mints the token, derives the one address the provision
+worker can live at, and offers to write both down for you. Decline the offer
+and `bullmoose admin init --token <the token>` still works — the URL is
+derived either way.
 
 `cloud plan` prints every resource by name — create / reuse / refuse — with
 refusals first. The installer **never overwrites a resource it did not make**,
@@ -240,8 +247,10 @@ npm install && npm run typecheck
 # can run a single phase, e.g. `node infra/bootstrap.mjs secrets`.
 node infra/bootstrap.mjs --dry-run
 
+# --url is derived from your Cloudflare account when omitted; pass it only
+# to point somewhere else.
 ADMIN_TOKEN=$(grep -m1 '^ADMIN_TOKEN=' .env | cut -d= -f2)
-bullmoose admin init --url https://bullmoose-provision.<acct>.workers.dev --token "$ADMIN_TOKEN"
+bullmoose admin init --token "$ADMIN_TOKEN"
 bullmoose admin tenant create t_home --name "Home"
 bullmoose admin domain add example.com --tenant t_home
 bullmoose admin account create you@example.com --tenant t_home

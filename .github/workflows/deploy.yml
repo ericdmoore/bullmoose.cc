@@ -1,19 +1,25 @@
 name: Deploy site
 
-# The bullmoose.cc marketing + guides site (src/, Astro → Cloudflare Pages).
+# The bullmoose.cc marketing + guides site (src/, Astro), uploaded to the
+# `bullmoose-site` R2 bucket and served by services/sitehost.
 # Design/plan: docs/architecture/marketing-site.md.
 #
-# Prereqs (one-time):
-#   1. A dedicated Pages token (Account > Cloudflare Pages: Edit), kept
-#      separate from the platform's bullmoose-deploy token. Store it as the
-#      GitHub repo secret BULLMOOSE_SITE_DEPLOY_TOKEN (`gh secret set …` —
-#      a local .env copy is NOT visible to CI). CLOUDFLARE_ACCOUNT_ID is set.
-#   2. ⚠️ First run does NOT create the project — current wrangler fails
-#      `pages deploy` on a missing project with "Maybe you intended to deploy
-#      a Worker project instead?", which reads as a config error rather than a
-#      missing prerequisite. Run `wrangler pages project create bullmoose`
-#      first (deploy-app.yml does this inline). Then map the apex
-#      `bullmoose.cc` to it in the Pages dashboard.
+# WAS Cloudflare Pages until #375, and this was the LAST Pages project. With it
+# gone, `Cloudflare Pages: Edit` leaves BULLMOOSE_SITE_DEPLOY_TOKEN and the
+# platform is Workers/D1/R2 end to end.
+#
+# ⚠️ The move fixed a real bug rather than tidying one. On Pages, a build with
+# no `404.html` gets an SPA-style fallback by default, so `bullmoose.cc/<any
+# nonexistent path>` answered **200 with the homepage**. That is how
+# `/.well-known/jmap` came to return a webpage to JMAP clients doing RFC 8620
+# §2.2 autodiscovery — a 200 tells the client it found the server. It was
+# patched with a `_redirects` rule for that one path; sitehost serves an honest
+# 404 for all of them.
+#
+# `_redirects` and `_headers` still work exactly as they did: `cloud site push`
+# compiles them (refusing anything it cannot honour, with a file and line) and
+# serve.ts applies them. Keeping Pages' file format means the build did not
+# have to change.
 
 on:
   push:
@@ -23,6 +29,10 @@ on:
       # The guides render straight from docs/playbooks (src/content.config.ts
       # globs ../docs/playbooks), so a playbook edit must redeploy the site.
       - "docs/playbooks/**"
+      # The worker that serves it, and the serving rules it shares with the
+      # app — a change to either must reach production without a hand deploy.
+      - "services/sitehost/**"
+      - "services/webhost/src/serve.ts"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
@@ -32,7 +42,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      deployments: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -43,10 +52,84 @@ jobs:
         run: |
           npm ci
           npm run build
-      - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
+      - uses: actions/setup-go@v5
         with:
-          apiToken: ${{ secrets.BULLMOOSE_SITE_DEPLOY_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: src
-          command: pages deploy dist --project-name=bullmoose --branch=main
+          go-version-file: cli-go/go.mod
+          cache-dependency-path: cli-go/go.sum
+
+      # Same uploader as the app and the previews. It also CONSUMES
+      # src/dist/_redirects and _headers — compiling them into the bucket and
+      # not publishing them, which is what Pages did and what stops
+      # /_redirects handing a reader every path you retired.
+      - name: Push the site to R2
+        working-directory: cli-go
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: go run . cloud site push --dir ../src/dist --bucket bullmoose-site
+
+      # Root npm install is needed for wrangler; the site's own package.json
+      # (installed above, in src/) does not carry it.
+      - run: npm ci
+      - name: Deploy sitehost
+        run: npx wrangler deploy -c services/sitehost/wrangler.jsonc
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      # The apex must resolve and be PROXIED for the route to fire at all.
+      # What it points at is irrelevant — sitehost's `bullmoose.cc/*`
+      # intercepts every path before anything reaches an origin.
+      #
+      # ⚠️ EXPECT A SHORT WINDOW after this record changes. Replacing the apex
+      # record briefly returned the OLD origin (the Pages custom domain) rather
+      # than the worker route — nonexistent paths went back to answering 200
+      # with the homepage for about a minute before the edge settled and the
+      # route won again. It is propagation, not a misconfiguration: verify a
+      # minute later before concluding the cutover failed, and check
+      # `access-control-allow-origin` (Pages sets it, sitehost does not) to
+      # tell which one answered.
+      #
+      # ⚠️ This also REPLACES the old `CNAME bullmoose.cc -> bullmoose.pages.dev`.
+      # Once that project is deleted the CNAME dangles, and `bullmoose.pages.dev`
+      # becomes claimable by anyone who creates a project of that name in their
+      # own account — on the apex, which is the front door. `AAAA 100::` is the
+      # IPv6 discard prefix and cannot be anyone's server.
+      - name: Ensure bullmoose.cc resolves to a proxied placeholder
+        env:
+          TOKEN: ${{ secrets.BULLMOOSE_RUNTIME_TOKEN }}
+        run: |
+          cf() { curl -sS -m 25 -H "Authorization: Bearer $TOKEN" \
+                   -H "content-type: application/json" "$@"; }
+          zone=$(cf "https://api.cloudflare.com/client/v4/zones?name=bullmoose.cc" \
+                  | tr -d ' \n' | grep -oE '"id":"[0-9a-f]{32}"' | head -1 | cut -d'"' -f4)
+          [ -n "$zone" ] || { echo "::error::could not resolve zone id"; exit 1; }
+          recs="https://api.cloudflare.com/client/v4/zones/$zone/dns_records"
+          body='{"type":"AAAA","name":"@","content":"100::","proxied":true,"comment":"apex — served by bullmoose-sitehost from R2"}'
+
+          existing=$(cf "$recs?name=bullmoose.cc&type=CNAME" | tr -d ' \n')
+          id=$(printf '%s' "$existing" | grep -oE '"id":"[0-9a-f]{32}"' | head -1 | cut -d'"' -f4)
+          if [ -z "$id" ]; then
+            existing=$(cf "$recs?name=bullmoose.cc&type=AAAA" | tr -d ' \n')
+            id=$(printf '%s' "$existing" | grep -oE '"id":"[0-9a-f]{32}"' | head -1 | cut -d'"' -f4)
+          fi
+
+          if [ -z "$id" ]; then
+            r=$(cf -X POST -d "$body" "$recs")
+            printf '%s' "$r" | grep -q '"success":true' \
+              && echo "created bullmoose.cc -> AAAA 100:: (proxied)" \
+              || { echo "::error::could not create the apex record"; printf '%s' "$r" | head -c 400; exit 1; }
+          elif printf '%s' "$existing" | grep -q '"content":"100::"' && printf '%s' "$existing" | grep -q '"proxied":true'; then
+            echo "bullmoose.cc is already a proxied placeholder"
+          else
+            # PUT replaces in place, so the apex never stops resolving — a
+            # delete-then-create would blink the front door.
+            r=$(cf -X PUT -d "$body" "$recs/$id")
+            printf '%s' "$r" | grep -q '"success":true' \
+              && echo "replaced the apex record with AAAA 100:: (proxied)" \
+              || { echo "::error::could not replace the apex record"; printf '%s' "$r" | head -c 400; exit 1; }
+          fi
+
+          echo "── bullmoose.cc ──"
+          cf "$recs?name=bullmoose.cc" | tr ',' '\n' \
+            | grep -oE '"(type|content|proxied)":[^,}]*' | sed 's/^/  /' | head -3

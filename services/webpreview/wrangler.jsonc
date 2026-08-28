@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bullmoose-webpreview",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-01",
+
+  // ⚠️ The wildcard LEADS, and that is not a style choice. Cloudflare refuses
+  // any pattern with a wildcard elsewhere in the hostname: "Route pattern may
+  // only contain wildcards at the beginning of the hostname and the end of the
+  // path" (API code 10022). So `preview-*.bullmoose.cc/*` is not a legal
+  // route, `*preview.bullmoose.cc/*` is, and the PR number has to come first
+  // in the hostname: `374-preview.bullmoose.cc`.
+  //
+  // One level of subdomain, NOT `*.preview.bullmoose.cc`: free Universal SSL
+  // covers `*.bullmoose.cc` and the apex, and nothing deeper. A nested preview
+  // host would serve a cert error on every PR.
+  //
+  // Each `<n>-preview.bullmoose.cc` also needs a proxied DNS record to exist
+  // before this route fires — a route binds paths on a hostname that must
+  // already resolve through Cloudflare. preview-app.yml creates it per PR and
+  // preview-cleanup.yml removes it when the PR closes.
+  //
+  // The pattern matches more than PRs (anything ending `preview`), so the
+  // worker itself refuses any hostname that is not `<digits>-preview`.
+  "routes": [{ "pattern": "*preview.bullmoose.cc/*", "zone_name": "bullmoose.cc" }],
+
+  // Separate from bullmoose-webmail on purpose: a preview must never be one
+  // typo'd prefix away from overwriting what app.bullmoose.cc serves.
+  "r2_buckets": [{ "binding": "PREVIEWS", "bucket_name": "bullmoose-webmail-preview" }],
+
+  "observability": { "enabled": true }
+}

@@ -185,9 +185,17 @@
     "DEV_ACCOUNT_ID": "t_dev__a_local",
     "DEV_TENANT_ID": "t_dev",
     "DEV_USERNAME": "dev@localhost"
-  }
+  },
   // Secrets (wrangler secret put):
   //   DEV_BEARER_TOKEN
   //   INTERNAL_TOKEN     — must match the submit worker's INTERNAL_TOKEN
   //   SHARE_SIGNING_KEY  — HMAC key for expiring /share/* links
+
+  // Logs. Absent from every mail worker until 2026-08-25, which is why a
+  // 14-hour inbound-mail outage had to be diagnosed from `wrangler tail` and a
+  // GraphQL analytics query instead of read from a log line. The exception was
+  // there the whole time — `D1_ERROR: no such table: ceremonies` — with nowhere
+  // to be seen. Volume here is a few hundred invocations a day, nowhere near
+  // the free plan's daily events allowance.
+  "observability": { "enabled": true }
 }

@@ -87,8 +87,8 @@ var valueFlags = map[string]bool{
 	"question": true, "reason": true,
 	// ---- cloud plan (s46 T2) ----
 	"zone": true, "stack-version": true, "stack-base": true,
-	// ---- cloud webmail push (#369) ---- "account" is already above
-	"dir": true, "bucket": true,
+	// ---- cloud site push/prune (#369, #375) ---- "account" is already above
+	"dir": true, "bucket": true, "prefix": true,
 	// ---- paging ----
 	"n": true,
 }

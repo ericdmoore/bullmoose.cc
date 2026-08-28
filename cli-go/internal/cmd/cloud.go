@@ -31,6 +31,7 @@ import (
 
 	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/cloud"
 	bmio "github.com/ericdmoore/bullmoose.cc/cli-go/internal/io"
+	"github.com/ericdmoore/bullmoose.cc/cli-go/internal/store"
 )
 
 type cloudArgs struct {
@@ -41,6 +42,7 @@ type cloudArgs struct {
 	StackVersion string
 	StackBase    string
 	Dir          string
+	Prefix       string
 	Bucket       string
 	Account      string
 	Positionals  []string
@@ -84,6 +86,8 @@ func parseCloud(argv []string) cloudArgs {
 				a.StackBase = value()
 			case "dir":
 				a.Dir = value()
+			case "prefix":
+				a.Prefix = value()
 			case "bucket":
 				a.Bucket = value()
 			case "account":
@@ -141,8 +145,8 @@ func runCloud(s *bmio.Streams, argv []string) int {
 		return runCloudInstall(s, a)
 	case "doctor":
 		return runCloudDoctor(s, a)
-	case "webmail":
-		return runCloudWebmail(s, a)
+	case "site":
+		return runCloudSite(s, a)
 	case "":
 		return die(s, bmio.Fail("cloud needs a verb: `bullmoose cloud plan|install|doctor --zone <domain>`", bmio.ExitUsage))
 	default:
@@ -253,10 +257,37 @@ func runCloudInstall(s *bmio.Streams, a cloudArgs) int {
 	case subErr != nil || sub == "":
 		s.Out("next: this account has no workers.dev subdomain, and the admin plane (bullmoose-provision)")
 		s.Out("is reachable only there — claim one in the Cloudflare dashboard (Workers → your subdomain),")
-		s.Out("then: bullmoose admin init --url https://bullmoose-provision.<subdomain>.workers.dev --token <ADMIN_TOKEN above>")
+		s.Out("then: bullmoose admin init --token <ADMIN_TOKEN above>   # --url is derived once a subdomain exists")
 	default:
-		s.Out("next — connect the admin plane, then let the stack wire its own mail path:")
-		s.Out("  bullmoose admin init --url https://bullmoose-provision." + sub + ".workers.dev --token <ADMIN_TOKEN above>")
+		// (1) OFFER to connect this device. The installer holds both halves
+		// already — it DERIVED the url and MINTED the token — so asking the
+		// operator to copy a freshly made secret out of scrollback buys
+		// nothing and risks a paste buffer. What you minted, you can write
+		// down; the hand-off boundary is respected because persisting your
+		// own output is not doing the product's job.
+		//
+		// An OFFER, never a side effect: the machine that installs is
+		// usually the machine that operates, but "usually" is not "always",
+		// and a config written without asking is one nobody knows is there.
+		adminURL := "https://" + provisionWorker + "." + sub + ".workers.dev"
+		token, minted := applied.Minted["ADMIN_TOKEN"]
+		connected := false
+		if minted && token != "" {
+			if defaultConfirm(s, a.Yes)("connect this device to the admin plane now (writes the url and token to your bullmoose config)? [Y/n] ") {
+				if err := connectAdminPlane(cloudInstallDB(), adminURL, token); err != nil {
+					s.Note("could not write the admin config (" + err.Error() + ") — run admin init by hand, below")
+				} else {
+					connected = true
+				}
+			}
+		}
+		if connected {
+			s.Out("admin plane connected: " + adminURL)
+			s.Out("next — let the stack wire its own mail path (nothing to copy):")
+		} else {
+			s.Out("next — connect the admin plane, then let the stack wire its own mail path:")
+			s.Out("  bullmoose admin init --token <ADMIN_TOKEN above>   # --url is derived")
+		}
 	}
 	s.Out("  bullmoose admin tenant add <name>")
 	s.Out("  bullmoose admin domain add " + a.Zone + " --tenant <tenantId>   # MX + Email Routing + catch-all→ingest + SES DKIM/DMARC")
@@ -309,7 +340,7 @@ func runCloudDoctor(s *bmio.Streams, a cloudArgs) int {
 }
 
 /**
- * `cloud webmail push --dir <built site>` — put a built webmail in R2.
+ * `cloud site push --dir <built site>` — put a built webmail in R2.
  *
  * The install path uploads the PUBLISHED tarball; this uploads a directory
  * you just built. It exists so our own CI has something to call instead of
@@ -323,16 +354,16 @@ func runCloudDoctor(s *bmio.Streams, a cloudArgs) int {
  * asking it to spend `Zone > Read` for something it can be told is a wider
  * token for no reason.
  */
-func runCloudWebmail(s *bmio.Streams, a cloudArgs) int {
+func runCloudSite(s *bmio.Streams, a cloudArgs) int {
 	sub := ""
 	if len(a.Positionals) > 1 {
 		sub = a.Positionals[1]
 	}
-	if sub != "push" {
-		return die(s, bmio.Fail("cloud webmail takes one verb today: `cloud webmail push --dir <built site>`", bmio.ExitUsage))
+	if sub != "push" && sub != "prune" {
+		return die(s, bmio.Fail("cloud site takes `push --dir <built site>` or `prune --prefix <prefix>`", bmio.ExitUsage))
 	}
-	if a.Dir == "" {
-		return die(s, bmio.Fail("cloud webmail push needs --dir <built site> (webmail/dist after `npm run -w webmail build`)", bmio.ExitUsage))
+	if sub == "push" && a.Dir == "" {
+		return die(s, bmio.Fail("cloud site push needs --dir <built site> (e.g. webmail/dist after `npm run -w webmail build`)", bmio.ExitUsage))
 	}
 	token := os.Getenv("CLOUDFLARE_API_TOKEN")
 	if token == "" {
@@ -359,17 +390,30 @@ func runCloudWebmail(s *bmio.Streams, a cloudArgs) int {
 		acct = probe.Zone.AccountID
 	}
 
-	n, err := cloud.UploadWebmailDir(cf, acct, bucket, a.Dir, func(line string) { s.Note("  " + line) })
+	if sub == "prune" {
+		n, err := cloud.PruneSitePrefix(cf, acct, bucket, a.Prefix, func(line string) { s.Note("  " + line) })
+		if err != nil {
+			return die(s, err)
+		}
+		s.Out("pruned " + strconv.Itoa(n) + " object(s) from r2://" + bucket + "/" + strings.TrimSuffix(a.Prefix, "/") + ".")
+		return 0
+	}
+
+	n, err := cloud.UploadSiteDir(cf, acct, bucket, a.Dir, a.Prefix, func(line string) { s.Note("  " + line) })
 	if err != nil {
 		if n > 0 {
 			// Same contract as the installer: what landed stays, and a re-run
 			// overwrites by key. Naming the count makes the retry informed
 			// rather than a coin flip about whether to start over.
-			s.Note("webmail push: stopped after " + strconv.Itoa(n) + " file(s) — re-running is safe, objects overwrite by key")
+			s.Note("site push: stopped after " + strconv.Itoa(n) + " file(s) — re-running is safe, objects overwrite by key")
 		}
 		return die(s, err)
 	}
-	s.Out("webmail pushed to r2://" + bucket + " (" + strconv.Itoa(n) + " objects).")
+	where := "r2://" + bucket
+	if a.Prefix != "" {
+		where += "/" + strings.TrimSuffix(a.Prefix, "/")
+	}
+	s.Out("site pushed to " + where + " (" + strconv.Itoa(n) + " objects).")
 	return 0
 }
 
@@ -408,3 +452,9 @@ func renderPlan(s *bmio.Streams, p *cloud.Plan) {
 	s.Out("legend: + create   = reuse (already yours; apply reconciles)   ⚿ mint locally   → you supply")
 	s.Out("read-only: nothing above has happened. `cloud install` (T3) is this plan plus one yes.")
 }
+
+// cloudInstallDB is the device mirror `cloud install` may write the admin
+// pair into. `cloud` owns no --db flag, so this is the ordinary resolution
+// ($BULLMOOSE_DB, else ~/.bullmoose/mail.db) named in one place — which is
+// also what lets a test point it somewhere harmless.
+func cloudInstallDB() string { return store.DBPath("") }

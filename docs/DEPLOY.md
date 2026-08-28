@@ -574,13 +574,22 @@ What to expect operationally:
   not recorded, 0 = known free). The tenant's own invoice is the other half of
   the story and lives at their provider.
 
-### The app surface — `app.bullmoose.cc` (Pages + Worker routes, ONE origin)
+### The app surface — `app.bullmoose.cc` (two Workers, ONE origin)
 
-`webmail/` deploys to a **second** Pages project, `bullmoose-app`, via
-`.github/workflows/deploy-app.yml`. The API is **not** a separate host: five
-Worker routes on `services/jmap` claim the API paths on the same name, and Pages
-serves everything else. Worker routes take precedence over Pages on a shared
-hostname, so the two coexist.
+`webmail/` is built to static files, uploaded to the **`bullmoose-webmail` R2
+bucket** by `.github/workflows/deploy-app.yml`, and served by
+**`services/webhost`**. The API is **not** a separate host: five Worker routes
+on `services/jmap` claim the API paths on the same name, and webhost's
+`app.bullmoose.cc/*` — deliberately the least specific route on the hostname —
+serves everything else. Routes match most-specific-first, so the two coexist.
+
+> **This was Cloudflare Pages until #368/#369.** It moved because Pages' upload
+> is an undocumented wrangler-internal protocol (BLAKE3 over base64-plus-
+> extension truncated to 32 hex, a JWT dance, four private endpoints), which
+> meant `cloud install` had to end by telling a stranger to run
+> `npx wrangler pages deploy` — the only place in the whole install where
+> someone learned this platform is built in TypeScript. R2 + a worker uses only
+> the documented APIs the installer already calls.
 
 That is deliberate. `services/jmap` sends **no CORS headers and has no `OPTIONS`
 handler**, so an app on `app.` talking to an API on `api.` would die at the
@@ -591,40 +600,49 @@ origin boundary.
 | path | served by |
 |---|---|
 | `/.well-known/jmap`, `/api/*`, `/auth/*`, `/share/*`, `/console/*` | `bullmoose-jmap` worker |
-| everything else (`/`, `/login`, `/mail`, `/calendar`, …) | `bullmoose-app` Pages |
+| everything else (`/`, `/login`, `/mail`, `/calendar`, …) | `bullmoose-webhost` worker (from R2) |
 
 `/console/*` is the agent console's read interface (s03.E, `services/jmap/src/console.ts`).
 It is here, and not on the worker that owns `/vault/credentials`, for the same
 CORS reason: `services/agent` has no public route and sends no CORS headers, so
-a browser cannot read anything there. **The `/agents` screen 404s into Pages
-until this route is deployed** — it is a new pattern, so an existing deployment
+a browser cannot read anything there. **The `/agents` screen falls back to the
+SPA shell until this route is deployed** — it is a new pattern, so an existing deployment
 needs `deploy-mail.yml` re-run before the console goes live.
 
 ⚠️ **A single `/api/*` route is not enough** and looks like it is. The client
 opens on `/.well-known/jmap` and the login door posts to `/auth/login`; neither
-is under `/api`. A missing route falls through to Pages and returns **404 HTML**,
-which reads as "the app is broken" rather than "the route is missing".
+is under `/api`. A missing route falls through to webhost, and since those paths
+are navigation-shaped it answers with the **SPA shell** — HTML where the client
+expected JSON, which reads as "the app is broken" rather than "the route is
+missing". (A missing *asset* 404s properly; webhost's SPA fallback is
+navigations-only precisely so HTML never arrives under a JavaScript
+content-type.)
 `webmail/src/lib/app/sameOrigin.test.ts` asserts the route list and that no app
 page or nav section collides with it.
 
-**Order matters:** deploy the worker (`deploy-mail.yml`) **before** the Pages
-project. Reverse it and `/api/*` 404s into Pages while the login page renders
-perfectly — the most confusing possible failure.
+**Order matters**, and `deploy-mail.yml` already encodes it: `webhost` is the
+**last** step, after `jmap`. Deploy webhost first and there is a window where
+`/api/*` falls through to the SPA fallback — the app answers its own API calls
+with HTML while the login page renders perfectly, the most confusing possible
+failure.
 
 One-time human steps:
 
-1. Run `deploy-mail.yml` so the routes exist.
+1. Run `deploy-app.yml` first, so the bucket has a build in it. Deploying
+   webhost onto an empty bucket makes every page answer
+   `503 no SITE bucket bound`, while `/api/*` keeps working because jmap's
+   routes are more specific — so it reads as a webmail bug rather than a deploy.
+2. Run `deploy-mail.yml` so the routes exist.
    ⚠️ A `routes` pattern with `zone_name` binds paths on a hostname that must
    **already resolve** through Cloudflare — it does **not** provision DNS. (That
-   is `custom_domain: true`, which these are not.) Attaching the Pages custom
-   domain in step 2 is what creates the record; until then every path on
-   `app.bullmoose.cc` fails to connect at all, routes or no routes.
-2. Run `deploy-app.yml` once — it creates the `bullmoose-app` Pages project by
-   direct upload — then map `app.bullmoose.cc` to it in the Pages dashboard.
-3. **No new token.** It reuses `BULLMOOSE_SITE_DEPLOY_TOKEN`; a token scoped
-   *Account > Cloudflare Pages: Edit* covers every Pages project in the account,
-   so a second project needs no widening. If a run 403s, that assumption was
-   wrong — widen that one token rather than minting another.
+   is `custom_domain: true`, which these are not.) `deploy-app.yml`'s last step
+   ensures `app.bullmoose.cc` exists as a **proxied `AAAA 100::` placeholder**;
+   until that record exists, every path fails to connect at all, routes or no
+   routes. What it points at is irrelevant — the routes intercept every path
+   before anything reaches an origin.
+3. **No new token**, and no Pages scope. The upload uses `CLOUDFLARE_API_TOKEN`
+   (R2 write, the same one that publishes releases) and the DNS step uses
+   `BULLMOOSE_RUNTIME_TOKEN`.
 
 And before any of it, run the migrations — `accounts.deleted_at` and
 `grants.revoked_at` are both in `verifyBearer`'s path, so a worker deployed
@@ -701,7 +719,7 @@ keeps the credential.
      `dav.bullmoose.cc` (`services/anglebrackets`), each a
      `custom_domain: true` route in its own `wrangler.jsonc`. The jmap worker
      went a different way — Worker **routes** on `app.bullmoose.cc`, sharing
-     the origin with Pages (§ *The app surface*) — so it has no custom domain
+     the origin with webhost (§ *The app surface*) — so it has no custom domain
      and needs none.
    - **The SRV record is not coming.** Cloudflare cannot serve a working
      `_jmap._tcp` for a proxied host: the target must be a hostname that

@@ -18,6 +18,24 @@ content and nothing to preserve, so a framework change costs nothing.
 
 ## 2. Decision — Astro, deployed to Cloudflare Pages
 
+> **⚠️ Superseded in part (#375).** The Astro decision below stands and the
+> site shipped on it. The *hosting* half did not: the site now builds to
+> static files that `bullmoose cloud site push` uploads to the
+> **`bullmoose-site` R2 bucket**, served by **`services/sitehost`**. Pages is
+> gone from the account entirely.
+>
+> The reason was not consolidation-for-its-own-sake. Pages SPA-falls-back when
+> a build has no `404.html`, so `bullmoose.cc/<any nonexistent path>` answered
+> **200 with the homepage** — which is how `/.well-known/jmap` came to return a
+> webpage to JMAP clients doing RFC 8620 §2.2 autodiscovery, and why a
+> `_redirects` rule had to patch that one path. `sitehost` serves an honest
+> 404. `_redirects` and `_headers` are still the interface — the CLI compiles
+> them at push time and refuses syntax it cannot honour.
+>
+> Reason 3 below argued for Pages on the grounds that "the platform is all
+> Workers/D1/R2". That argument is now fully satisfied rather than
+> approximated.
+
 Replace Fresh with [Astro](https://astro.build) + the
 [`@astrojs/cloudflare`](https://docs.astro.build/en/guides/integrations-guide/cloudflare/)
 adapter, deployed to **Cloudflare Pages**. Three reasons:
@@ -93,10 +111,11 @@ so they're useful on GitHub too.
 ## 6. Deployment
 
 - **Build:** `astro build` → static output + the Cloudflare adapter.
-- **Deploy:** `wrangler pages deploy` (wrangler is already a dev dep) or
-  `cloudflare/pages-action`, from a rewritten `.github/workflows/deploy.yml`
-  (drop `denoland/*`, drop the Deno Deploy `deployctl` step). Reuse the
-  existing `CLOUDFLARE_*` repo secrets.
+- **Deploy (as shipped, #375):** `bullmoose cloud site push --dir src/dist
+  --bucket bullmoose-site` uploads the build to R2, then
+  `wrangler deploy -c services/sitehost/wrangler.jsonc` ships the worker that
+  serves it — both from `.github/workflows/deploy.yml`. *(This originally read
+  `wrangler pages deploy`; see the note in §2.)*
 - **Domain:** serve the site on the **apex `bullmoose.cc`** (+ `www` →
   apex redirect). This coexists with the zone's MX (Email Routing), the
   `_jmap._tcp` SRV, and the `jmap.` / `dav.` worker hostnames — Pages adds

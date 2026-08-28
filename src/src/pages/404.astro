@@ -1,0 +1,40 @@
+---
+import Base from "../layouts/Base.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+
+// This page did not exist while the site was on Cloudflare Pages, and its
+// absence was the bug (#375).
+//
+// Pages SPA-falls-back when a build has no 404.html, so bullmoose.cc/<anything>
+// answered 200 with the homepage. A success status carrying the wrong page is
+// worse than an error: it told JMAP clients doing RFC 8620 §2.2 autodiscovery
+// that they had found the server at /.well-known/jmap, and that one path had to
+// be patched with a redirect rule.
+//
+// services/sitehost serves this with a real 404 status, so the whole class is
+// answered rather than the one instance anyone noticed.
+---
+
+<Base
+  title="Not found — bullmoose"
+  description="That page isn't here."
+>
+  <Nav />
+  <main class="wrap page">
+    <p class="eyebrow">404</p>
+    <h1>That page isn't here.</h1>
+    <p class="lede">
+      The link may be old, or it may be a typo. Nothing is broken on our end —
+      this address simply doesn't have a page behind it.
+    </p>
+    <p>
+      Try <a href="/">the front page</a>, the
+      <a href="/guides/">guides</a>, or <a href="/recipes/">agent recipes</a>.
+      If you followed a link from somewhere on this site,
+      <a href="https://github.com/ericdmoore/bullmoose.cc/issues/new">tell us</a>
+      — that one is ours to fix.
+    </p>
+  </main>
+  <Footer />
+</Base>
