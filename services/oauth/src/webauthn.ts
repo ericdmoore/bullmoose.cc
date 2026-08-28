@@ -200,7 +200,30 @@ export async function creationOptions(
     // Registering the same authenticator twice is a confusing no-op the
     // browser can prevent outright.
     excludeCredentials: existing.map((c) => ({ type: "public-key", id: c.id })),
-    authenticatorSelection: { residentKey: "preferred", userVerification: "preferred" },
+    // ⚠️ residentKey is REQUIRED, not preferred, and the two are not
+    // interchangeable here.
+    //
+    // `assertionOptions` sends `allowCredentials: []` — usernameless — so at
+    // assertion time the browser must FIND the credential with no hint. Only a
+    // DISCOVERABLE (resident) credential can be found that way.
+    //
+    // With "preferred", an authenticator that does not store resident keys is
+    // free to create a server-side credential instead. Registration then
+    // SUCCEEDS, and every unit test still passes — they hand a constructed
+    // assertion straight to the verifier and never ask a browser to find
+    // anything. The failure lands later, at the ceremony, permanently, for
+    // that person only. tools/e2e-ceremony.mjs reproduced exactly that.
+    //
+    // "required" moves the refusal to enrollment, which is the honest moment:
+    // a human is present, and can reach for a different authenticator.
+    //
+    // Found with a CDP virtual authenticator (hasResidentKey: false), which
+    // reproduced it exactly. That harness is not kept — the ceremony is a
+    // human ritual by design and a browser suite is a lot of machinery for one
+    // flow — so the coupling it revealed is pinned in webauthn.test.ts
+    // instead: these two functions must agree, and they are four hundred
+    // lines apart.
+    authenticatorSelection: { residentKey: "required", requireResidentKey: true, userVerification: "preferred" },
   };
 }
 
